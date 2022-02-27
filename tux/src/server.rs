@@ -62,3 +62,18 @@ impl std::ops::Drop for TestServer {
 		}
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_server_should_accept_simple_request() {
+		const DATA: &str = "test data";
+		let server = TestServer::new(DATA);
+		let addr = format!("http://127.0.0.1:{}", server.port());
+		let output = reqwest::blocking::get(addr).unwrap().bytes().unwrap();
+		let output = String::from_utf8_lossy(&output);
+		assert_eq!(output, DATA);
+	}
+}
