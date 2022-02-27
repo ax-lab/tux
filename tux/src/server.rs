@@ -1,5 +1,7 @@
 use warp::Filter;
 
+pub use warp;
+
 /// Provides a very simple HTTP server that can be used to test HTTP requests.
 ///
 /// The server is bound to the localhost at a random port. The bound port can
@@ -39,7 +41,7 @@ impl TestServer {
 		Self::new_with_routes(routes)
 	}
 
-	fn new_with_routes<F>(routes: F) -> TestServer
+	pub fn new_with_routes<F>(routes: F) -> TestServer
 	where
 		F: warp::Filter + Clone + Send + Sync + 'static,
 		F::Extract: warp::Reply,

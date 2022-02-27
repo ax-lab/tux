@@ -1,5 +1,8 @@
 //! This library provides miscellaneous test utility functions.
 
+mod dir;
+pub use dir::*;
+
 mod server;
 pub use server::*;
 
@@ -26,11 +29,17 @@ pub fn get_exe_command(cmd: &str) -> Command {
 
 /// Runs a cargo-built executable from an integration test and returns the
 /// executable output as a string.
-pub fn run_and_get_output(cmd: &str) -> String {
-	let output = get_exe_command(cmd).output().expect("executing executable");
-	assert!(
-		output.stderr.len() == 0,
-		"executable generated error output"
-	);
+pub fn run_and_get_output(cmd: &str, args: &[&str]) -> String {
+	let mut cmd = get_exe_command(cmd);
+	cmd.args(args);
+	run_command_and_get_output(&mut cmd)
+}
+
+fn run_command_and_get_output(cmd: &mut Command) -> String {
+	let output = cmd.output().expect("executing executable");
+	if output.stderr.len() > 0 {
+		let stderr = String::from_utf8_lossy(&output.stderr);
+		panic!("executable generated error output: {}", stderr);
+	}
 	String::from_utf8(output.stdout).expect("reading output as utf-8")
 }
