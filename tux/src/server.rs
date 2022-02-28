@@ -7,36 +7,44 @@ pub use warp;
 /// The server is bound to the localhost at a random port. The bound port can
 /// be retrieved using the `port` method.
 pub struct TestServer {
-	addr: std::net::SocketAddr,
-	state: TestServerState,
+	listen_addr: std::net::SocketAddr,
+	inner_state: TestServerState,
 }
 
 enum TestServerState {
 	Active {
-		rt: tokio::runtime::Runtime,
-		server: tokio::task::JoinHandle<()>,
+		runtime: tokio::runtime::Runtime,
+		server_task: tokio::task::JoinHandle<()>,
 		shutdown: tokio::sync::oneshot::Sender<()>,
 	},
-	Inactive,
+	Dropped,
 }
 
 impl std::ops::Drop for TestServer {
 	fn drop(&mut self) {
-		let state = std::mem::replace(&mut self.state, TestServerState::Inactive);
+		// gracefully shutdown the server when the value is dropped by sending
+		// a shutdown signal and waiting for the server task to end
+		let state = std::mem::replace(&mut self.inner_state, TestServerState::Dropped);
 		if let TestServerState::Active {
-			rt,
-			server,
+			runtime,
+			server_task,
 			shutdown,
 		} = state
 		{
 			shutdown.send(()).expect("sending test server shutdown");
-			rt.block_on(server).expect("shutting down test server");
+			runtime
+				.block_on(server_task)
+				.expect("shutting down test server");
 		}
 	}
 }
 
 impl TestServer {
-	pub fn new_with_root_response(response: &'static str) -> TestServer {
+	pub fn port(&self) -> u16 {
+		self.listen_addr.port()
+	}
+
+	pub fn new_with_root_response(response: &'static str) -> Self {
 		let routes = warp::path::end().map(move || response);
 		Self::new_with_routes(routes)
 	}
@@ -46,12 +54,12 @@ impl TestServer {
 		F: warp::Filter + Clone + Send + Sync + 'static,
 		F::Extract: warp::Reply,
 	{
-		let rt = tokio::runtime::Builder::new_multi_thread()
+		let runtime = tokio::runtime::Builder::new_multi_thread()
 			.enable_all()
 			.build()
 			.unwrap();
 
-		let (server, addr, shutdown) = rt.block_on(async {
+		let (server_task, addr, shutdown) = runtime.block_on(async {
 			let (shutdown, wait_shutdown) = tokio::sync::oneshot::channel::<()>();
 			let addr = ([127, 0, 0, 1], 0);
 			let (addr, server) =
@@ -59,22 +67,18 @@ impl TestServer {
 					wait_shutdown.await.ok();
 				});
 
-			let server = rt.spawn(server);
+			let server = runtime.spawn(server);
 			(server, addr, shutdown)
 		});
 
 		TestServer {
-			addr,
-			state: TestServerState::Active {
-				rt,
-				server,
+			listen_addr: addr,
+			inner_state: TestServerState::Active {
+				runtime,
+				server_task,
 				shutdown,
 			},
 		}
-	}
-
-	pub fn port(&self) -> u16 {
-		self.addr.port()
 	}
 }
 
@@ -83,7 +87,7 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_server_should_accept_simple_request() {
+	fn test_server_should_accept_request() {
 		const DATA: &str = "test data";
 		let server = TestServer::new_with_root_response(DATA);
 		let addr = format!("http://127.0.0.1:{}", server.port());
@@ -98,5 +102,18 @@ mod tests {
 		let addr = format!("http://127.0.0.1:{}/invalid_path", server.port());
 		let response_status = reqwest::blocking::get(addr).unwrap().status().as_u16();
 		assert_eq!(response_status, 404);
+	}
+
+	#[test]
+	fn test_server_should_shutdown_on_drop() {
+		let server = TestServer::new_with_root_response("");
+		let addr = format!("http://127.0.0.1:{}", server.port());
+		drop(server);
+
+		let client = reqwest::blocking::ClientBuilder::new();
+		let client = client.timeout(std::time::Duration::from_millis(50));
+		let client = client.build().unwrap();
+		let result = client.get(addr).send();
+		assert!(result.is_err());
 	}
 }

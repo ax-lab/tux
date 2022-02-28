@@ -2,6 +2,9 @@ use std::path::{Path, PathBuf};
 
 use path_clean::PathClean;
 
+/// Provides a unique temporary directory that can be used to setup data files
+/// for tests. The directory and its contents will be deleted when the value
+/// is dropped.
 pub struct TestDataDir {
 	dir: tempfile::TempDir,
 }
@@ -61,6 +64,37 @@ mod tests {
 	}
 
 	#[test]
+	fn test_data_dir_path_should_be_absolute() {
+		let dir = TestDataDir::create_new();
+		let path = dir.path();
+		assert!(path.is_absolute());
+	}
+
+	#[test]
+	fn test_data_should_create_file_at_root() {
+		let dir = TestDataDir::create_new();
+		let file_path = dir.create_file("some_file.txt", "some file contents");
+		assert!(file_path.is_file());
+
+		let contents = std::fs::read_to_string(file_path).unwrap();
+		assert_eq!(contents, "some file contents");
+	}
+
+	#[test]
+	fn test_data_should_create_file_with_directories() {
+		let dir = TestDataDir::create_new();
+		let file_path = dir.create_file("sub/a/b/simple_file.txt", "abc");
+		assert!(file_path.is_file());
+
+		let mut sub_dir = dir.path().to_owned();
+		sub_dir.push("sub");
+		assert!(sub_dir.is_dir());
+
+		let contents = std::fs::read_to_string(file_path).unwrap();
+		assert_eq!(contents, "abc");
+	}
+
+	#[test]
 	fn test_data_dir_should_delete_diretory_on_drop_even_if_non_empty() {
 		let dir = TestDataDir::create_new();
 		let path = dir.path().to_owned();
@@ -73,31 +107,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_data_should_create_file() {
-		let dir = TestDataDir::create_new();
-		let file_path = dir.create_file("simple_file.txt", "123");
-		assert!(file_path.is_file());
-
-		let contents = std::fs::read_to_string(file_path).unwrap();
-		assert_eq!(contents, "123");
-	}
-
-	#[test]
-	fn test_data_should_create_file_with_directory() {
-		let dir = TestDataDir::create_new();
-		let file_path = dir.create_file("sub/simple_file.txt", "abc");
-		assert!(file_path.is_file());
-
-		let mut sub_dir = dir.path().to_owned();
-		sub_dir.push("sub");
-		assert!(sub_dir.is_dir());
-
-		let contents = std::fs::read_to_string(file_path).unwrap();
-		assert_eq!(contents, "abc");
-	}
-
-	#[test]
-	fn test_data_should_not_create_outside_root_directory() {
+	fn test_data_should_not_create_file_outside_root_directory() {
 		let dir = TestDataDir::create_new();
 		let result = std::panic::catch_unwind(|| {
 			dir.create_file(
