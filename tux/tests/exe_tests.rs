@@ -12,7 +12,7 @@ fn run_and_get_output_returns_stdout() {
 
 #[test]
 fn test_data_dir_run_and_get_output_runs_executable_in_temp_dir() {
-	let data = TestDataDir::create_new();
+	let data = TestTempDir::create_new();
 	data.create_file("test.txt", "test file data");
 	let output = data.run_and_get_output("tux", &["test.txt"]);
 	assert!(
