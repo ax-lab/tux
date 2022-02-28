@@ -1,4 +1,4 @@
-use warp::Filter;
+use warp::{path::FullPath, Filter};
 
 pub use warp;
 
@@ -49,6 +49,19 @@ impl TestServer {
 		Self::new_with_routes(routes)
 	}
 
+	pub fn new_with_ping_route(route: &'static str) -> Self {
+		let routes = warp::path(route)
+			.and(warp::method().and(warp::path::full()))
+			.map(|method, path: FullPath| {
+				let mut output = Vec::new();
+				output.push(format!("method: {}", method));
+				output.push(format!("path: {}", path.as_str()));
+				let output = output.join("\n");
+				output
+			});
+		Self::new_with_routes(routes)
+	}
+
 	pub fn new_with_routes<F>(routes: F) -> TestServer
 	where
 		F: warp::Filter + Clone + Send + Sync + 'static,
@@ -91,8 +104,7 @@ mod tests {
 		const DATA: &str = "test data";
 		let server = TestServer::new_with_root_response(DATA);
 		let addr = format!("http://127.0.0.1:{}", server.port());
-		let output = reqwest::blocking::get(addr).unwrap().bytes().unwrap();
-		let output = String::from_utf8_lossy(&output);
+		let output = get_request_output(addr);
 		assert_eq!(output, DATA);
 	}
 
@@ -115,5 +127,44 @@ mod tests {
 		let client = client.build().unwrap();
 		let result = client.get(addr).send();
 		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_server_with_ping_route_returns_request_info() {
+		let server = TestServer::new_with_ping_route("ping");
+
+		let addr = format!("http://127.0.0.1:{}/ping/abc", server.port());
+		let addr = &addr;
+		let output = get_request_output(addr);
+		check_output_contains(&output, "method: GET");
+		check_output_contains(&output, "path: /ping/abc");
+
+		let addr = format!("http://127.0.0.1:{}/ping/123", server.port());
+		let output = get_post_request_output(addr);
+		check_output_contains(&output, "method: POST");
+		check_output_contains(&output, "path: /ping/123");
+
+		fn check_output_contains(output: &str, expected: &str) {
+			if !output.contains(expected) {
+				panic!("output does not contain '{}': {:?}", expected, output);
+			}
+		}
+	}
+
+	fn get_request_output<S: AsRef<str>>(addr: S) -> String {
+		let output = reqwest::blocking::get(addr.as_ref())
+			.unwrap()
+			.bytes()
+			.unwrap();
+		let output = String::from_utf8_lossy(&output);
+		output.to_string()
+	}
+
+	fn get_post_request_output<S: AsRef<str>>(addr: S) -> String {
+		let addr = reqwest::Url::parse(addr.as_ref()).unwrap();
+		let client = reqwest::blocking::ClientBuilder::new().build().unwrap();
+		let output = client.post(addr).send().unwrap().bytes().unwrap();
+		let output = String::from_utf8_lossy(&output);
+		output.to_string()
 	}
 }
