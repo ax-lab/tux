@@ -9,11 +9,6 @@ where
 	P: AsRef<Path>,
 	F: FnMut(Vec<String>) -> Vec<String>,
 {
-	let path = path.as_ref();
-	if path.to_str().unwrap().contains("failed") {
-		panic!("to appease the test gods");
-	}
-
 	let result = testdata_to_result(path, callback);
 	if !result.success {
 		panic!("tests failed");
@@ -74,14 +69,31 @@ where
 
 	for (path, name) in test_input_list.into_iter() {
 		let input = std::fs::read_to_string(&path).expect("reading test input file");
-		let input = input.split('\n').map(|x| x.to_string()).collect();
+		let input = input.trim_end();
+		let input = input
+			.lines()
+			.skip_while(|x| x.trim() == "")
+			.map(|x| x.to_string())
+			.collect();
 
 		let mut test_success = true;
 		let output = callback(input);
+		let output = output.join("\n").trim().to_string();
 
 		let mut output_path = path.clone();
 		output_path.set_extension(TEST_OUTPUT_FILE_EXTENSION);
 		match std::fs::read_to_string(&output_path) {
+			Ok(expected) => {
+				let expected = expected
+					.lines()
+					.skip_while(|x| x.trim() == "")
+					.collect::<Vec<_>>()
+					.join("\n");
+				let expected = expected.trim_end();
+				if output != expected {
+					test_success = false;
+				}
+			}
 			Err(err) => {
 				test_success = false;
 				if err.kind() == ErrorKind::NotFound {
@@ -89,13 +101,11 @@ where
 					// generate a new one with the current test output
 					let mut output_path = output_path.clone();
 					output_path.set_extension(TEST_NEW_OUTPUT_FILE_EXTENSION);
-					std::fs::write(output_path, output.join("\n"))
-						.expect("writing new test output");
+					std::fs::write(output_path, output).expect("writing new test output");
 				} else {
 					panic!("failed to read output file for {}: {}", name, err);
 				}
 			}
-			_ => {}
 		}
 
 		success = success && test_success;
@@ -151,6 +161,65 @@ mod tests {
 		dir.create_file("test.input", "some input");
 
 		testdata(dir.path(), |input| input);
+	}
+
+	#[test]
+	#[should_panic]
+	fn testdata_fails_if_output_is_different() {
+		let dir = TestTempDir::create_new();
+		helper::write_case(&dir, "test.input", "some input", "some output");
+		testdata(dir.path(), |input| input);
+	}
+
+	#[test]
+	fn testdata_ignores_leading_and_trailing_lines_when_comparing() {
+		let dir = TestTempDir::create_new();
+		helper::write_case(&dir, "test.input", "value", "  \n\nvalue\n\n  ");
+		testdata(dir.path(), |input| input);
+
+		testdata(dir.path(), |mut input| {
+			input.push("".to_string());
+			input
+		});
+	}
+
+	#[test]
+	fn testdata_ignores_line_break_differences_in_input_and_output() {
+		let dir = TestTempDir::create_new();
+		helper::write_case(&dir, "a.input", "a\nb\nc", "c\r\nb\r\na");
+		helper::write_case(&dir, "b.input", "a\r\nb\r\nc", "c\nb\na");
+
+		testdata(dir.path(), |mut input| {
+			input.reverse();
+			input
+		});
+	}
+
+	#[test]
+	#[should_panic]
+	fn testdata_should_not_ignore_trailing_indentation_of_first_line() {
+		let dir = TestTempDir::create_new();
+		helper::write_case(&dir, "test.input", "value", "  value");
+		testdata(dir.path(), |input| input);
+
+		testdata(dir.path(), |mut input| {
+			input.push("".to_string());
+			input
+		});
+	}
+
+	#[test]
+	fn testdata_trim_leading_empty_lines_and_trailing_space_in_the_input() {
+		let dir = TestTempDir::create_new();
+		helper::write_case(&dir, "a.input", "\n  \n  a\n\nb\nc  \n  \n\n", "");
+
+		let mut test_input = String::new();
+		testdata(dir.path(), |input| {
+			test_input = input.join("\n");
+			Vec::new()
+		});
+
+		assert_eq!(test_input, "  a\n\nb\nc");
 	}
 
 	#[test]
@@ -241,7 +310,7 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_should_fail_and_generate_a_result_file_if_one_does_not_exist() {
+	fn testdata_should_fail_and_generate_an_output_file_if_one_does_not_exist() {
 		let dir = TestTempDir::create_new();
 		dir.create_file("test.input", "Some Input");
 
@@ -255,6 +324,29 @@ mod tests {
 
 		let new_result_text = std::fs::read_to_string(new_result_path).unwrap();
 		assert_eq!(new_result_text, "some input");
+	}
+
+	#[test]
+	fn testdata_to_result_should_fail_if_output_does_not_match() {
+		let dir = TestTempDir::create_new();
+		helper::write_case(&dir, "a.input", "Valid 1", "valid 1");
+		helper::write_case(&dir, "b.input", "Valid 2", "valid 2");
+		helper::write_case(
+			&dir,
+			"c.input",
+			"this should fail",
+			"invalid output for the test",
+		);
+
+		let result = testdata_to_result(dir.path(), |input| {
+			input.into_iter().map(|x| x.to_lowercase()).collect()
+		});
+
+		assert!(!result.success);
+		assert_eq!(result.tests.len(), 3);
+		assert!(result.tests[0].success);
+		assert!(result.tests[1].success);
+		assert!(!result.tests[2].success);
 	}
 
 	mod helper {
