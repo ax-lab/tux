@@ -1,7 +1,4 @@
-use std::{
-	collections::VecDeque,
-	path::{Path, PathBuf},
-};
+use std::{collections::VecDeque, path::Path};
 
 pub fn testdata<P, F>(path: P, callback: F)
 where
@@ -33,26 +30,33 @@ where
 	P: AsRef<Path>,
 	F: FnMut(Vec<String>) -> Vec<String>,
 {
-	let mut inputs = Vec::new();
+	let root_path = path.as_ref();
+	let mut test_input_list = Vec::new();
 
-	let mut queue = VecDeque::new();
-	queue.push_back(path.as_ref().to_owned());
+	let mut dir_queue = VecDeque::new();
+	dir_queue.push_back((root_path.to_owned(), String::new()));
 
-	while let Some(path) = queue.pop_front() {
-		let entries = std::fs::read_dir(&path).expect("reading test directory");
+	while let Some((next_path, base_name)) = dir_queue.pop_front() {
+		let entries = std::fs::read_dir(&next_path).expect("reading test directory");
 		let entries = entries.map(|x| x.expect("reading test directory entry"));
 
 		let mut entries = entries.collect::<Vec<_>>();
 		entries.sort_by_key(|x| x.file_name());
 
 		for entry in entries {
-			let path = entry.path();
-			let entry = std::fs::metadata(&path).expect("reading test directory metadata");
+			let entry_path = entry.path();
+			let entry_name = if base_name.len() > 0 {
+				format!("{}/{}", base_name, entry.file_name().to_string_lossy())
+			} else {
+				entry.file_name().to_string_lossy().to_string()
+			};
+
+			let entry = std::fs::metadata(&entry_path).expect("reading test directory metadata");
 			if entry.is_dir() {
-				queue.push_back(path);
-			} else if let Some(extension) = path.extension() {
+				dir_queue.push_back((entry_path, entry_name));
+			} else if let Some(extension) = entry_path.extension() {
 				if extension == "input" {
-					inputs.push(path);
+					test_input_list.push((entry_path, entry_name));
 				}
 			}
 		}
@@ -61,41 +65,14 @@ where
 	let success = true;
 	let mut tests = Vec::new();
 
-	let mut common_path = if inputs.len() > 0 {
-		let mut path = inputs[0].clone();
-		path.pop();
-		path
-	} else {
-		PathBuf::default()
-	};
-	for path in inputs.iter().skip(1) {
-		while !path.starts_with(&common_path) {
-			if !common_path.pop() {
-				break;
-			}
-		}
-	}
-
-	let common_path = common_path.to_string_lossy();
-	for path in inputs.iter() {
+	for (path, name) in test_input_list.into_iter() {
 		let input = std::fs::read_to_string(path).expect("reading test input file");
 		let input = input.split('\n').map(|x| x.to_string()).collect();
 		callback(input);
 
-		let path = path.to_string_lossy();
-		let path = if let Some(stripped_path) = path.strip_prefix(common_path.as_ref()) {
-			stripped_path
-		} else {
-			path.as_ref()
-		};
-		let path = if let Some('/' | '\\') = path.chars().next() {
-			&path[1..]
-		} else {
-			path
-		};
 		tests.push(TestDataResultItem {
 			success: true,
-			name: path.to_string(),
+			name: name,
 		})
 	}
 
@@ -213,14 +190,16 @@ mod tests {
 		let dir = TestTempDir::create_new();
 		helper::write_case(&dir, "a.input", "A", "a");
 		helper::write_case(&dir, "b.input", "B", "b");
+		helper::write_case(&dir, "sub/some.input", "Some", "some");
 
 		let result = testdata_to_result(dir.path(), |input| {
 			input.into_iter().map(|x| x.to_lowercase()).collect()
 		});
 
-		assert_eq!(result.tests.len(), 2);
+		assert_eq!(result.tests.len(), 3);
 		assert_eq!(result.tests[0].name, "a.input");
 		assert_eq!(result.tests[1].name, "b.input");
+		assert_eq!(result.tests[2].name, "sub/some.input");
 	}
 
 	mod helper {
