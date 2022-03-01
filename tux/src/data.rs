@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, path::Path};
+use std::{collections::VecDeque, io::ErrorKind, path::Path};
+
+pub const TEST_INPUT_FILE_EXTENSION: &'static str = "input";
+pub const TEST_OUTPUT_FILE_EXTENSION: &'static str = "valid";
+pub const TEST_NEW_OUTPUT_FILE_EXTENSION: &'static str = "valid.new";
 
 pub fn testdata<P, F>(path: P, callback: F)
 where
@@ -10,7 +14,10 @@ where
 		panic!("to appease the test gods");
 	}
 
-	testdata_to_result(path, callback);
+	let result = testdata_to_result(path, callback);
+	if !result.success {
+		panic!("tests failed");
+	}
 }
 
 #[derive(Debug)]
@@ -55,23 +62,45 @@ where
 			if entry.is_dir() {
 				dir_queue.push_back((entry_path, entry_name));
 			} else if let Some(extension) = entry_path.extension() {
-				if extension == "input" {
+				if extension == TEST_INPUT_FILE_EXTENSION {
 					test_input_list.push((entry_path, entry_name));
 				}
 			}
 		}
 	}
 
-	let success = true;
+	let mut success = true;
 	let mut tests = Vec::new();
 
 	for (path, name) in test_input_list.into_iter() {
-		let input = std::fs::read_to_string(path).expect("reading test input file");
+		let input = std::fs::read_to_string(&path).expect("reading test input file");
 		let input = input.split('\n').map(|x| x.to_string()).collect();
-		callback(input);
 
+		let mut test_success = true;
+		let output = callback(input);
+
+		let mut output_path = path.clone();
+		output_path.set_extension(TEST_OUTPUT_FILE_EXTENSION);
+		match std::fs::read_to_string(&output_path) {
+			Err(err) => {
+				test_success = false;
+				if err.kind() == ErrorKind::NotFound {
+					// for convenience, if the test output is not found we
+					// generate a new one with the current test output
+					let mut output_path = output_path.clone();
+					output_path.set_extension(TEST_NEW_OUTPUT_FILE_EXTENSION);
+					std::fs::write(output_path, output.join("\n"))
+						.expect("writing new test output");
+				} else {
+					panic!("failed to read output file for {}: {}", name, err);
+				}
+			}
+			_ => {}
+		}
+
+		success = success && test_success;
 		tests.push(TestDataResultItem {
-			success: true,
+			success: test_success,
 			name: name,
 		})
 	}
@@ -88,7 +117,7 @@ mod tests {
 	fn testdata_runs_test_callback() {
 		let dir = TestTempDir::create_new();
 		dir.create_file("some.input", "");
-		dir.create_file("some.check", "");
+		dir.create_file("some.valid", "");
 
 		let mut test_callback_was_called = false;
 		testdata(dir.path(), |input| {
@@ -103,7 +132,7 @@ mod tests {
 	fn testdata_runs_test_callback_with_input() {
 		let dir = TestTempDir::create_new();
 		dir.create_file("some.input", "the input");
-		dir.create_file("some.check", "");
+		dir.create_file("some.valid", "");
 
 		let mut test_callback_input = String::new();
 		testdata(dir.path(), |input| {
@@ -113,6 +142,15 @@ mod tests {
 		});
 
 		assert_eq!(test_callback_input, "the input");
+	}
+
+	#[test]
+	#[should_panic]
+	fn testdata_fails_if_output_is_missing() {
+		let dir = TestTempDir::create_new();
+		dir.create_file("test.input", "some input");
+
+		testdata(dir.path(), |input| input);
 	}
 
 	#[test]
@@ -202,14 +240,35 @@ mod tests {
 		assert_eq!(result.tests[2].name, "sub/some.input");
 	}
 
+	#[test]
+	fn testdata_should_fail_and_generate_a_result_file_if_one_does_not_exist() {
+		let dir = TestTempDir::create_new();
+		dir.create_file("test.input", "Some Input");
+
+		let result = testdata_to_result(dir.path(), |input| {
+			input.into_iter().map(|x| x.to_lowercase()).collect()
+		});
+		assert_eq!(result.success, false);
+
+		let new_result_path = dir.path().join("test.valid.new");
+		assert!(new_result_path.is_file());
+
+		let new_result_text = std::fs::read_to_string(new_result_path).unwrap();
+		assert_eq!(new_result_text, "some input");
+	}
+
 	mod helper {
 		use super::*;
 
 		pub fn write_case(dir: &TestTempDir, input_file: &str, input: &str, expected: &str) {
 			dir.create_file(input_file, input);
 
-			let basename = input_file.strip_suffix(".input").unwrap();
-			dir.create_file(&format!("{}.check", basename), expected);
+			let suffix = format!(".{}", TEST_INPUT_FILE_EXTENSION);
+			let basename = input_file.strip_suffix(&suffix).unwrap();
+			dir.create_file(
+				&format!("{}.{}", basename, TEST_OUTPUT_FILE_EXTENSION),
+				expected,
+			);
 		}
 	}
 }
