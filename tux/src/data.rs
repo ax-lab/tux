@@ -81,12 +81,9 @@ mod tests {
 	#[test]
 	fn testdata_runs_test_callback_for_each_input() {
 		let dir = TestTempDir::create_new();
-		dir.create_file("a.input", "input A");
-		dir.create_file("a.check", "");
-		dir.create_file("b.input", "input B");
-		dir.create_file("b.check", "");
-		dir.create_file("c.input", "input C");
-		dir.create_file("c.check", "");
+		helper::write_case(&dir, "a.input", "input A", "");
+		helper::write_case(&dir, "b.input", "input B", "");
+		helper::write_case(&dir, "c.input", "input C", "");
 
 		let mut test_callback_inputs = Vec::new();
 		testdata(dir.path(), |input| {
@@ -106,23 +103,14 @@ mod tests {
 	#[test]
 	fn testdata_checks_subdirectories() {
 		let dir = TestTempDir::create_new();
-		dir.create_file("a1.input", "a1");
-		dir.create_file("a2.input", "a2");
-		dir.create_file("a3.input", "a3");
-		dir.create_file("a1/a.input", "a1/a");
-		dir.create_file("a1/b.input", "a1/b");
-		dir.create_file("a2/a.input", "a2/a");
-		dir.create_file("a2/b.input", "a2/b");
-		dir.create_file("a2/sub/file.input", "a2/sub/file");
-
-		dir.create_file("a1.check", "");
-		dir.create_file("a2.check", "");
-		dir.create_file("a3.check", "");
-		dir.create_file("a1/a.check", "");
-		dir.create_file("a1/b.check", "");
-		dir.create_file("a2/a.check", "");
-		dir.create_file("a2/b.check", "");
-		dir.create_file("a2/sub/file.check", "");
+		helper::write_case(&dir, "a1.input", "a1", "");
+		helper::write_case(&dir, "a2.input", "a2", "");
+		helper::write_case(&dir, "a3.input", "a3", "");
+		helper::write_case(&dir, "a1/a.input", "a1/a", "");
+		helper::write_case(&dir, "a1/b.input", "a1/b", "");
+		helper::write_case(&dir, "a2/a.input", "a2/a", "");
+		helper::write_case(&dir, "a2/b.input", "a2/b", "");
+		helper::write_case(&dir, "a2/sub/file.input", "a2/sub/file", "");
 
 		let mut test_callback_inputs = Vec::new();
 		testdata(dir.path(), |input| {
@@ -142,5 +130,16 @@ mod tests {
 			"a2/sub/file".to_string(),
 		];
 		assert_eq!(test_callback_inputs, expected);
+	}
+
+	mod helper {
+		use super::*;
+
+		pub fn write_case(dir: &TestTempDir, input_file: &str, input: &str, expected: &str) {
+			dir.create_file(input_file, input);
+
+			let basename = input_file.strip_suffix(".input").unwrap();
+			dir.create_file(&format!("{}.check", basename), expected);
+		}
 	}
 }
