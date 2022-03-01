@@ -7,6 +7,9 @@
 //! code handle errors by panicking. This minimizes the code in unit tests by
 //! removing the need to have error handling at the call site.
 
+mod data;
+pub use data::*;
+
 mod temp;
 pub use temp::*;
 
