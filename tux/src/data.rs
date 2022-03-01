@@ -1,6 +1,9 @@
-use std::{collections::VecDeque, path::Path};
+use std::{
+	collections::VecDeque,
+	path::{Path, PathBuf},
+};
 
-pub fn testdata<P, F>(path: P, mut callback: F)
+pub fn testdata<P, F>(path: P, callback: F)
 where
 	P: AsRef<Path>,
 	F: FnMut(Vec<String>) -> Vec<String>,
@@ -10,10 +13,30 @@ where
 		panic!("to appease the test gods");
 	}
 
+	testdata_to_result(path, callback);
+}
+
+#[derive(Debug)]
+pub struct TestDataResult {
+	pub success: bool,
+	pub tests: Vec<TestDataResultItem>,
+}
+
+#[derive(Debug)]
+pub struct TestDataResultItem {
+	pub success: bool,
+	pub name: String,
+}
+
+pub fn testdata_to_result<P, F>(path: P, mut callback: F) -> TestDataResult
+where
+	P: AsRef<Path>,
+	F: FnMut(Vec<String>) -> Vec<String>,
+{
 	let mut inputs = Vec::new();
 
 	let mut queue = VecDeque::new();
-	queue.push_back(path.to_owned());
+	queue.push_back(path.as_ref().to_owned());
 
 	while let Some(path) = queue.pop_front() {
 		let entries = std::fs::read_dir(&path).expect("reading test directory");
@@ -35,11 +58,48 @@ where
 		}
 	}
 
+	let success = true;
+	let mut tests = Vec::new();
+
+	let mut common_path = if inputs.len() > 0 {
+		let mut path = inputs[0].clone();
+		path.pop();
+		path
+	} else {
+		PathBuf::default()
+	};
+	for path in inputs.iter().skip(1) {
+		while !path.starts_with(&common_path) {
+			if !common_path.pop() {
+				break;
+			}
+		}
+	}
+
+	let common_path = common_path.to_string_lossy();
 	for path in inputs.iter() {
 		let input = std::fs::read_to_string(path).expect("reading test input file");
 		let input = input.split('\n').map(|x| x.to_string()).collect();
 		callback(input);
+
+		let path = path.to_string_lossy();
+		let path = if let Some(stripped_path) = path.strip_prefix(common_path.as_ref()) {
+			stripped_path
+		} else {
+			path.as_ref()
+		};
+		let path = if let Some('/' | '\\') = path.chars().next() {
+			&path[1..]
+		} else {
+			path
+		};
+		tests.push(TestDataResultItem {
+			success: true,
+			name: path.to_string(),
+		})
 	}
+
+	TestDataResult { success, tests }
 }
 
 #[cfg(test)]
@@ -130,6 +190,37 @@ mod tests {
 			"a2/sub/file".to_string(),
 		];
 		assert_eq!(test_callback_inputs, expected);
+	}
+
+	#[test]
+	fn testdata_to_result_returns_ok_for_valid_case() {
+		let dir = TestTempDir::create_new();
+		helper::write_case(&dir, "test.input", "abc\n123", "123\nabc");
+
+		let result = testdata_to_result(dir.path(), |mut input| {
+			input.reverse();
+			input
+		});
+
+		assert!(result.success);
+		assert_eq!(result.tests.len(), 1);
+		assert_eq!(result.tests[0].name, "test.input");
+		assert_eq!(result.tests[0].success, true);
+	}
+
+	#[test]
+	fn testdata_to_result_returns_an_item_for_each_case() {
+		let dir = TestTempDir::create_new();
+		helper::write_case(&dir, "a.input", "A", "a");
+		helper::write_case(&dir, "b.input", "B", "b");
+
+		let result = testdata_to_result(dir.path(), |input| {
+			input.into_iter().map(|x| x.to_lowercase()).collect()
+		});
+
+		assert_eq!(result.tests.len(), 2);
+		assert_eq!(result.tests[0].name, "a.input");
+		assert_eq!(result.tests[1].name, "b.input");
 	}
 
 	mod helper {
