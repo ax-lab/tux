@@ -35,8 +35,18 @@ pub fn run_and_get_output(cmd: &str, args: &[&str]) -> String {
 /// also panic if the commands generates any error output.
 pub fn run_command_and_get_output(cmd: &mut Command) -> String {
 	let output = cmd.output().expect("executing executable");
-	if output.stderr.len() > 0 {
-		let stderr = String::from_utf8_lossy(&output.stderr);
+	let stderr = String::from_utf8_lossy(&output.stderr);
+	if !output.status.success() {
+		panic!(
+			"executable exited with error ({}){}",
+			output.status,
+			if stderr.len() > 0 {
+				format!(" and error output: {}", stderr)
+			} else {
+				"".into()
+			}
+		);
+	} else if stderr.len() > 0 {
 		panic!("executable generated error output: {}", stderr);
 	}
 	String::from_utf8(output.stdout).expect("reading output as utf-8")

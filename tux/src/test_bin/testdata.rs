@@ -9,7 +9,7 @@ fn main() {
 	if args.len() != 2 {
 		eprintln!("invalid arguments\n");
 		print_usage();
-		return;
+		std::process::exit(1);
 	}
 
 	let callback = match args[0].as_str() {
