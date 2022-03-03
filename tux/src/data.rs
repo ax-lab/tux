@@ -1,33 +1,56 @@
 use std::{collections::VecDeque, io::ErrorKind, path::Path};
 
-pub const TEST_INPUT_FILE_EXTENSION: &'static str = "input";
-pub const TEST_OUTPUT_FILE_EXTENSION: &'static str = "valid";
-pub const TEST_NEW_OUTPUT_FILE_EXTENSION: &'static str = "valid.new";
+const TEST_INPUT_FILE_EXTENSION: &'static str = "input";
+const TEST_OUTPUT_FILE_EXTENSION: &'static str = "valid";
+const TEST_NEW_OUTPUT_FILE_EXTENSION: &'static str = "valid.new";
 
+/// Test all input files in the given directory (recursively) using the
+/// provided callback and compare the expected output.
+///
+/// A test input is any text file with a `.input` extension. Each input file
+/// must have a corresponding `.valid` file providing the expected output.
+///
+/// For each input file, the test callback is called with the input text split
+/// by lines. The result of the callback are the test output lines.
+///
+/// The test is successful if the callback output matches the `.valid` file
+/// contents.
 pub fn testdata<P, F>(path: P, callback: F)
 where
 	P: AsRef<Path>,
 	F: FnMut(Vec<String>) -> Vec<String>,
 {
 	let result = testdata_to_result(path, callback);
-	if !result.success {
+	if !result.success() {
 		panic!("tests failed");
 	}
 }
 
 #[derive(Debug)]
-pub struct TestDataResult {
-	pub success: bool,
+struct TestDataResult {
 	pub tests: Vec<TestDataResultItem>,
 }
 
+impl TestDataResult {
+	pub fn success(&self) -> bool {
+		for it in self.tests.iter() {
+			if !it.success {
+				return false;
+			}
+		}
+		true
+	}
+}
+
 #[derive(Debug)]
-pub struct TestDataResultItem {
+struct TestDataResultItem {
 	pub success: bool,
+
+	#[allow(dead_code)]
 	pub name: String,
 }
 
-pub fn testdata_to_result<P, F>(path: P, mut callback: F) -> TestDataResult
+fn testdata_to_result<P, F>(path: P, mut callback: F) -> TestDataResult
 where
 	P: AsRef<Path>,
 	F: FnMut(Vec<String>) -> Vec<String>,
@@ -115,7 +138,7 @@ where
 		})
 	}
 
-	TestDataResult { success, tests }
+	TestDataResult { tests }
 }
 
 #[cfg(test)]
@@ -286,7 +309,7 @@ mod tests {
 			input
 		});
 
-		assert!(result.success);
+		assert!(result.success());
 		assert_eq!(result.tests.len(), 1);
 		assert_eq!(result.tests[0].name, "test.input");
 		assert_eq!(result.tests[0].success, true);
@@ -317,7 +340,7 @@ mod tests {
 		let result = testdata_to_result(dir.path(), |input| {
 			input.into_iter().map(|x| x.to_lowercase()).collect()
 		});
-		assert_eq!(result.success, false);
+		assert_eq!(result.success(), false);
 
 		let new_result_path = dir.path().join("test.valid.new");
 		assert!(new_result_path.is_file());
@@ -342,7 +365,7 @@ mod tests {
 			input.into_iter().map(|x| x.to_lowercase()).collect()
 		});
 
-		assert!(!result.success);
+		assert!(!result.success());
 		assert_eq!(result.tests.len(), 3);
 		assert!(result.tests[0].success);
 		assert!(result.tests[1].success);

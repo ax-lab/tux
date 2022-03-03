@@ -1,20 +1,14 @@
-//! This library provides miscellaneous utility functions for the testing
-//! harness.
-//!
-//! # Note on error handling
-//!
-//! Since this library is designed to be used in a test harness, all fallible
-//! code handle errors by panicking. This minimizes the code in unit tests by
-//! removing the need to have error handling at the call site.
+//! This library provides miscellaneous utility functions for unit and
+//! integration tests in Rust.
 
 mod data;
 pub use data::*;
 
-mod temp;
-pub use temp::*;
+mod exe;
+pub use exe::*;
 
 mod server;
 pub use server::*;
 
-mod exe;
-pub use exe::*;
+mod temp;
+pub use temp::*;
