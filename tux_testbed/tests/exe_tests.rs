@@ -11,13 +11,13 @@ fn run_and_get_output_returns_stdout() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic = "some error output"]
 fn run_and_get_output_should_panic_on_error_output() {
-	run_and_get_output("bin_run_with_error", &[]);
+	run_and_get_output("bin_with_error", &[]);
 }
 
 #[test]
-#[should_panic]
+#[should_panic = "exit code: 123"]
 fn run_and_get_output_should_panic_on_non_zero_exit_code() {
 	run_and_get_output("bin_with_error", &["exitcode"]);
 }
