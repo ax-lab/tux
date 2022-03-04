@@ -9,7 +9,7 @@ fn testdata_reverse_case_works() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic = "tests failed"]
 fn testdata_failed_case_fails() {
 	testdata("tests/testdata/failed", |input| input);
 }
