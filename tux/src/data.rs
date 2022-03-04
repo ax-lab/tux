@@ -178,20 +178,21 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic]
 	fn testdata_fails_if_output_is_missing() {
 		let dir = TestTempDir::create_new();
 		dir.create_file("test.input", "some input");
 
-		testdata(dir.path(), |input| input);
+		let res = testdata_to_result(dir.path(), |input| input);
+		assert!(!res.success());
 	}
 
 	#[test]
-	#[should_panic]
 	fn testdata_fails_if_output_is_different() {
 		let dir = TestTempDir::create_new();
 		helper::write_case(&dir, "test.input", "some input", "some output");
-		testdata(dir.path(), |input| input);
+
+		let res = testdata_to_result(dir.path(), |input| input);
+		assert!(!res.success());
 	}
 
 	#[test]
@@ -219,16 +220,11 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic]
 	fn testdata_should_not_ignore_trailing_indentation_of_first_line() {
 		let dir = TestTempDir::create_new();
 		helper::write_case(&dir, "test.input", "value", "  value");
-		testdata(dir.path(), |input| input);
-
-		testdata(dir.path(), |mut input| {
-			input.push("".to_string());
-			input
-		});
+		let res = testdata_to_result(dir.path(), |input| input);
+		assert!(!res.success());
 	}
 
 	#[test]
@@ -340,7 +336,7 @@ mod tests {
 		let result = testdata_to_result(dir.path(), |input| {
 			input.into_iter().map(|x| x.to_lowercase()).collect()
 		});
-		assert_eq!(result.success(), false);
+		assert!(!result.success());
 
 		let new_result_path = dir.path().join("test.valid.new");
 		assert!(new_result_path.is_file());
@@ -366,7 +362,7 @@ mod tests {
 		});
 
 		assert!(!result.success());
-		assert_eq!(result.tests.len(), 3);
+		assert!(result.tests.len() == 3);
 		assert!(result.tests[0].success);
 		assert!(result.tests[1].success);
 		assert!(!result.tests[2].success);
