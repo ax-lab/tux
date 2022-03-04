@@ -36,7 +36,9 @@ impl TestTempDir {
 		path
 	}
 
-	pub fn run_and_get_output(&self, cmd: &str, args: &[&str]) -> String {
+	/// Equivalent to [`super::run_bin`] but runs the binary with the temporary
+	/// directory as current working directory.
+	pub fn run_bin(&self, cmd: &str, args: &[&str]) -> String {
 		let mut cmd = super::get_bin(cmd);
 		cmd.args(args);
 		cmd.current_dir(self.path());
