@@ -1,5 +1,6 @@
 [workspace]
 
 members = [
-	"tux"
+	"tux",
+	"tux_testbed"
 ]

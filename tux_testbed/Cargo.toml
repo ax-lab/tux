@@ -1,0 +1,28 @@
+[package]
+name = "tux_testbed"
+version = "0.1.0"
+edition = "2021"
+description = "testbed for the tux library"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+path = "src/bin_simple.rs"
+name = "bin_simple"
+test = false
+
+[[bin]]
+path = "src/bin_testdata.rs"
+name = "bin_testdata"
+test = false
+
+[[bin]]
+path = "src/bin_with_error.rs"
+name = "bin_with_error"
+test = false
+
+[dependencies]
+tux = { path = "../tux" }

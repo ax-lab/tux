@@ -8,22 +8,6 @@ edition = "2021"
 [lib]
 path = "src/lib.rs"
 
-[[bin]]
-path = "src/test_bin/simple.rs"
-name = "tux_test_simple"
-test = false
-
-[[bin]]
-path = "src/test_bin/testdata.rs"
-name = "tux_test_testdata"
-test = false
-
-[[bin]]
-path = "src/test_bin/run_with_error.rs"
-name = "tux_test_run_with_error"
-test = false
-
-
 [dependencies]
 path-clean = { version = "0.1" }
 tempfile = { version = "3" }
