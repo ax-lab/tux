@@ -37,7 +37,7 @@ impl TestTempDir {
 	}
 
 	pub fn run_and_get_output(&self, cmd: &str, args: &[&str]) -> String {
-		let mut cmd = super::get_project_bin(cmd);
+		let mut cmd = super::get_bin(cmd);
 		cmd.args(args);
 		cmd.current_dir(self.path());
 		super::get_command_output(&mut cmd)

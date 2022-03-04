@@ -1,12 +1,13 @@
 use std::process::Command;
 
-/// Returns a `Command` for running an executable binary from the project.
+/// Returns a `Command` for running a binary from the project (i.e. a binary
+/// built by Cargo).
 ///
 /// This is intended to be used by integration tests that need to run one of
 /// the crate's binaries.
 ///
-/// See also: `get_command_output`.
-pub fn get_project_bin(name: &str) -> Command {
+/// See also `get_command_output` and `run_bin`.
+pub fn get_bin(name: &str) -> Command {
 	// Cargo generates integration tests at `target/debug/deps`
 	let mut exe_path = std::env::current_exe().expect("getting current executable filename");
 	exe_path.pop();
@@ -27,18 +28,20 @@ pub fn get_project_bin(name: &str) -> Command {
 	Command::new(exe_path)
 }
 
-/// Convenience function combining `get_project_bin` and `get_command_output`.
-pub fn get_project_bin_output(cmd: &str, args: &[&str]) -> String {
-	let mut cmd = get_project_bin(cmd);
+/// Convenience function combining `get_bin` and `get_command_output`.
+pub fn run_bin(cmd: &str, args: &[&str]) -> String {
+	let mut cmd = get_bin(cmd);
 	cmd.args(args);
 	get_command_output(&mut cmd)
 }
 
-/// Simple wrapper for running a `Command` and retrieving the output, while
-/// validating the exit code and stderr output.
+/// Wrapper for running a `Command` and retrieving the output, while validating
+/// the exit code and stderr output.
 ///
 /// This will call `Command::output` and panic if the exit status is non-zero
 /// or if any error output is generated.
+///
+/// Returns the command stdout as a UTF-8 string.
 pub fn get_command_output(cmd: &mut Command) -> String {
 	let output = cmd.output().expect("executing executable");
 	let stderr = String::from_utf8_lossy(&output.stderr);

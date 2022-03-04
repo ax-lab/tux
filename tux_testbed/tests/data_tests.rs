@@ -16,6 +16,6 @@ fn testdata_failed_case_fails() {
 
 #[test]
 fn testdata_can_execute_test_executable() {
-	let output = get_project_bin_output("bin_testdata", &["info"]);
+	let output = run_bin("bin_testdata", &["info"]);
 	assert!(output.contains("tux testdata helper"));
 }
