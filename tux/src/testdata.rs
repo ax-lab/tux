@@ -21,14 +21,17 @@ where
 	F: FnMut(Vec<String>) -> Vec<String>,
 {
 	let result = testdata_to_result(path, callback);
-	if !result.success() {
-		panic!("tests failed");
-	}
 
 	for it in result.tests.iter() {
 		if it.success {
 			println!("passed: {}", it.name);
+		} else {
+			println!("failed: {}", it.name);
 		}
+	}
+
+	if !result.success() {
+		panic!("tests failed");
 	}
 }
 

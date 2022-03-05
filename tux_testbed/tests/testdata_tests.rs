@@ -46,3 +46,25 @@ fn testdata_should_output_each_passed_test() {
 	assert!(output[2].contains("c.input"));
 	assert!(output[3].contains("sub/some.input"));
 }
+
+#[test]
+fn testdata_should_output_failed_tests_in_summary() {
+	let dir = temp_dir();
+	dir.create_file("pass.input", "");
+	dir.create_file("fail.input", "");
+
+	dir.create_file("pass.valid", "");
+	dir.create_file("fail.valid", "this will fail");
+
+	let output = get_bin("bin_testdata")
+		.args(&["empty", dir.path_str()])
+		.output()
+		.unwrap();
+	let output = String::from_utf8_lossy(&output.stdout)
+		.lines()
+		.filter(|x| x.contains("failed") && x.contains(".input"))
+		.map(|x| x.into())
+		.collect::<Vec<String>>();
+	assert!(output.len() == 1);
+	assert!(output[0].contains("fail.input"));
+}
