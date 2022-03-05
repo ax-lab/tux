@@ -2,22 +2,32 @@ use std::path::{Path, PathBuf};
 
 use path_clean::PathClean;
 
+/// Alias for [`TestTempDir::create_new`].
+pub fn temp_dir() -> TestTempDir {
+	TestTempDir::create_new()
+}
+
 /// Provides a unique temporary directory that can be used to setup data files
 /// for tests. The directory and its contents will be deleted when the value
 /// is dropped.
 pub struct TestTempDir {
 	dir: tempfile::TempDir,
+	dir_str: String,
 }
 
 impl TestTempDir {
 	pub fn create_new() -> TestTempDir {
-		TestTempDir {
-			dir: tempfile::tempdir().expect("creating temp dir for test"),
-		}
+		let dir = tempfile::tempdir().expect("creating temp dir for test");
+		let dir_str = dir.path().to_string_lossy().into();
+		TestTempDir { dir, dir_str }
 	}
 
 	pub fn path(&self) -> &Path {
 		self.dir.path()
+	}
+
+	pub fn path_str(&self) -> &str {
+		self.dir_str.as_str()
 	}
 
 	pub fn create_file<S: AsRef<[u8]>>(&self, name: &str, text: S) -> PathBuf {
@@ -51,7 +61,14 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_temp_dir_should_create_new_directory() {
+	fn test_temp_dir_should_return_new_test_temp_dir() {
+		let dir = temp_dir();
+		let path = dir.path();
+		assert!(path.is_dir());
+	}
+
+	#[test]
+	fn test_temp_dir_create_new_should_create_new_directory() {
 		let dir = TestTempDir::create_new();
 		let path = dir.path();
 		assert!(path.is_dir());
@@ -109,7 +126,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_temp_should_not_create_file_outside_root_directory() {
+	fn test_temp_dir_should_not_create_file_outside_root_directory() {
 		let dir = TestTempDir::create_new();
 		let result = std::panic::catch_unwind(|| {
 			dir.create_file(
@@ -118,5 +135,11 @@ mod tests {
 			);
 		});
 		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_temp_dir_path_as_str_should_equal_path() {
+		let dir = TestTempDir::create_new();
+		assert!(dir.path_str() == dir.path().to_string_lossy());
 	}
 }
