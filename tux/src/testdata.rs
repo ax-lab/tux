@@ -101,27 +101,18 @@ where
 
 	for (path, name) in test_input_list.into_iter() {
 		let input = std::fs::read_to_string(&path).expect("reading test input file");
-		let input = input.trim_end();
-		let input = input
-			.lines()
-			.skip_while(|x| x.trim() == "")
-			.map(|x| x.to_string())
-			.collect();
+		let input = super::text::lines(input);
 
 		let mut test_success = true;
 		let output = callback(input);
-		let output = output.join("\n").trim().to_string();
+		let output = output.join("\n");
 
 		let mut output_path = path.clone();
 		output_path.set_extension(TEST_OUTPUT_FILE_EXTENSION);
 		match std::fs::read_to_string(&output_path) {
 			Ok(expected) => {
-				let expected = expected
-					.lines()
-					.skip_while(|x| x.trim() == "")
-					.collect::<Vec<_>>()
-					.join("\n");
-				let expected = expected.trim_end();
+				let expected = super::text::lines(expected);
+				let expected = expected.join("\n");
 				if output != expected {
 					test_success = false;
 				}
@@ -153,11 +144,11 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::temp::TestTempDir;
+	use crate::{temp_dir, TestTempDir};
 
 	#[test]
 	fn testdata_runs_test_callback() {
-		let dir = TestTempDir::create_new();
+		let dir = temp_dir();
 		dir.create_file("some.input", "");
 		dir.create_file("some.valid", "");
 
@@ -172,7 +163,7 @@ mod tests {
 
 	#[test]
 	fn testdata_runs_test_callback_with_input() {
-		let dir = TestTempDir::create_new();
+		let dir = temp_dir();
 		dir.create_file("some.input", "the input");
 		dir.create_file("some.valid", "");
 
@@ -188,7 +179,7 @@ mod tests {
 
 	#[test]
 	fn testdata_fails_if_output_is_missing() {
-		let dir = TestTempDir::create_new();
+		let dir = temp_dir();
 		dir.create_file("test.input", "some input");
 
 		let res = testdata_to_result(dir.path(), |input| input);
@@ -197,7 +188,7 @@ mod tests {
 
 	#[test]
 	fn testdata_fails_if_output_is_different() {
-		let dir = TestTempDir::create_new();
+		let dir = temp_dir();
 		helper::write_case(&dir, "test.input", "some input", "some output");
 
 		let res = testdata_to_result(dir.path(), |input| input);
@@ -205,20 +196,34 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_ignores_leading_and_trailing_lines_when_comparing() {
-		let dir = TestTempDir::create_new();
-		helper::write_case(&dir, "test.input", "value", "  \n\nvalue\n\n  ");
-		testdata(dir.path(), |input| input);
+	fn testdata_trims_input_files() {
+		let dir = temp_dir();
+		helper::write_case(&dir, "test.input", "\n\nfirst\ntrim end:  \nlast\n\n", "");
 
-		testdata(dir.path(), |mut input| {
-			input.push("".to_string());
-			input
+		let mut test_input = Vec::new();
+		testdata(dir.path(), |input| {
+			test_input = input;
+			Vec::new()
 		});
+
+		assert_eq!(test_input, vec!["first", "trim end:", "last"]);
+	}
+
+	#[test]
+	fn testdata_trims_expected_output_files() {
+		let dir = temp_dir();
+		helper::write_case(
+			&dir,
+			"test.input",
+			"line 1\nline 2\nline 3",
+			"\n\nline 1\nline 2  \nline 3\n\n",
+		);
+		testdata(dir.path(), |input| input);
 	}
 
 	#[test]
 	fn testdata_ignores_line_break_differences_in_input_and_output() {
-		let dir = TestTempDir::create_new();
+		let dir = temp_dir();
 		helper::write_case(&dir, "a.input", "a\nb\nc", "c\r\nb\r\na");
 		helper::write_case(&dir, "b.input", "a\r\nb\r\nc", "c\nb\na");
 
@@ -230,7 +235,7 @@ mod tests {
 
 	#[test]
 	fn testdata_should_not_ignore_trailing_indentation_of_first_line() {
-		let dir = TestTempDir::create_new();
+		let dir = temp_dir();
 		helper::write_case(&dir, "test.input", "value", "  value");
 		let res = testdata_to_result(dir.path(), |input| input);
 		assert!(!res.success());
@@ -238,7 +243,7 @@ mod tests {
 
 	#[test]
 	fn testdata_trim_leading_empty_lines_and_trailing_space_in_the_input() {
-		let dir = TestTempDir::create_new();
+		let dir = temp_dir();
 		helper::write_case(&dir, "a.input", "\n  \n  a\n\nb\nc  \n  \n\n", "");
 
 		let mut test_input = String::new();
@@ -252,7 +257,7 @@ mod tests {
 
 	#[test]
 	fn testdata_runs_test_callback_for_each_input() {
-		let dir = TestTempDir::create_new();
+		let dir = temp_dir();
 		helper::write_case(&dir, "a.input", "input A", "");
 		helper::write_case(&dir, "b.input", "input B", "");
 		helper::write_case(&dir, "c.input", "input C", "");
@@ -274,7 +279,7 @@ mod tests {
 
 	#[test]
 	fn testdata_checks_subdirectories() {
-		let dir = TestTempDir::create_new();
+		let dir = temp_dir();
 		helper::write_case(&dir, "a1.input", "a1", "");
 		helper::write_case(&dir, "a2.input", "a2", "");
 		helper::write_case(&dir, "a3.input", "a3", "");
@@ -306,7 +311,7 @@ mod tests {
 
 	#[test]
 	fn testdata_to_result_returns_ok_for_valid_case() {
-		let dir = TestTempDir::create_new();
+		let dir = temp_dir();
 		helper::write_case(&dir, "test.input", "abc\n123", "123\nabc");
 
 		let result = testdata_to_result(dir.path(), |mut input| {
@@ -322,7 +327,7 @@ mod tests {
 
 	#[test]
 	fn testdata_to_result_returns_an_item_for_each_case() {
-		let dir = TestTempDir::create_new();
+		let dir = temp_dir();
 		helper::write_case(&dir, "a.input", "A", "a");
 		helper::write_case(&dir, "b.input", "B", "b");
 		helper::write_case(&dir, "sub/some.input", "Some", "some");
@@ -339,7 +344,7 @@ mod tests {
 
 	#[test]
 	fn testdata_should_fail_and_generate_an_output_file_if_one_does_not_exist() {
-		let dir = TestTempDir::create_new();
+		let dir = temp_dir();
 		dir.create_file("test.input", "Some Input");
 
 		let result = testdata_to_result(dir.path(), |input| {
@@ -356,7 +361,7 @@ mod tests {
 
 	#[test]
 	fn testdata_to_result_should_fail_if_output_does_not_match() {
-		let dir = TestTempDir::create_new();
+		let dir = temp_dir();
 		helper::write_case(&dir, "a.input", "Valid 1", "valid 1");
 		helper::write_case(&dir, "b.input", "Valid 2", "valid 2");
 		helper::write_case(
