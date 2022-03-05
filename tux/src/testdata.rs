@@ -24,6 +24,12 @@ where
 	if !result.success() {
 		panic!("tests failed");
 	}
+
+	for it in result.tests.iter() {
+		if it.success {
+			println!("passed: {}", it.name);
+		}
+	}
 }
 
 #[derive(Debug)]
