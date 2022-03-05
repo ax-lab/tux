@@ -24,7 +24,7 @@ where
 {
 	let output = input
 		.into_iter()
-		.map(|x| x.as_ref().trim().to_string())
+		.map(|x| x.as_ref().trim_end().to_string())
 		.skip_while(|x| x.len() == 0);
 	TrimEndIterator::wrap(output)
 }
@@ -145,6 +145,12 @@ mod tests {
 	}
 
 	#[test]
+	fn lines_does_not_strip_lead_indentation() {
+		let out = lines("\n 1\n  2\n   3");
+		assert_eq!(out, vec![" 1", "  2", "   3"]);
+	}
+
+	#[test]
 	fn trim_lines_returns_non_empty_lines() {
 		let input = vec!["1", "2", "3"];
 		let out = trim_lines(input.iter()).collect::<Vec<_>>();
@@ -177,5 +183,12 @@ mod tests {
 		let input = vec!["1x", "", "2x", "", "", "3x", "", "", "", "!"];
 		let out = trim_lines(input.iter()).collect::<Vec<_>>();
 		assert_eq!(out, vec!["1x", "", "2x", "", "", "3x", "", "", "", "!"]);
+	}
+
+	#[test]
+	fn trim_lines_does_not_trim_lead_indentation() {
+		let input = vec![" 1", "  2", "   3"];
+		let out = trim_lines(input.iter()).collect::<Vec<_>>();
+		assert_eq!(out, vec![" 1", "  2", "   3"]);
 	}
 }
