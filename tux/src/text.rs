@@ -6,7 +6,10 @@
 /// trailing empty lines.
 pub fn lines<S: AsRef<str>>(input: S) -> Vec<String> {
 	let input = input.as_ref().trim_end();
-	let output = LinesIterator { input, index: 0 };
+	let output = LinesIterator {
+		input_text: input,
+		cursor_pos: 0,
+	};
 	trim_lines(output).collect()
 }
 
@@ -27,33 +30,34 @@ where
 }
 
 struct LinesIterator<'a> {
-	input: &'a str,
-	index: usize,
+	input_text: &'a str,
+	cursor_pos: usize,
 }
 
 impl<'a> Iterator for LinesIterator<'a> {
 	type Item = &'a str;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		let input = &self.input[self.index..];
-		let bytes = input.as_bytes();
-		if bytes.len() == 0 {
+		let remaining_input = &self.input_text[self.cursor_pos..];
+		if remaining_input.len() == 0 {
 			None
-		} else if let Some(index) = input.find(&['\n', '\r']) {
-			let output = &input[..index];
-			let next_index = if bytes[index] == '\r' as u8
-				&& index < bytes.len() - 1
-				&& bytes[index + 1] == '\n' as u8
-			{
-				index + 2
+		} else if let Some(next_line_break_offset) = remaining_input.find(&['\n', '\r']) {
+			let bytes = remaining_input.as_bytes();
+			let output = &remaining_input[..next_line_break_offset];
+			let is_carriage_return = bytes[next_line_break_offset] == '\r' as u8;
+			let is_crlf_sequence = is_carriage_return
+				&& next_line_break_offset < bytes.len() - 1
+				&& bytes[next_line_break_offset + 1] == '\n' as u8;
+			let next_cursor_offset = if is_crlf_sequence {
+				next_line_break_offset + 2
 			} else {
-				index + 1
+				next_line_break_offset + 1
 			};
-			self.index += next_index;
+			self.cursor_pos += next_cursor_offset;
 			Some(output)
 		} else {
-			self.index += input.len();
-			Some(input)
+			self.cursor_pos += remaining_input.len();
+			Some(remaining_input)
 		}
 	}
 }
