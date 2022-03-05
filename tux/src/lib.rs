@@ -1,9 +1,6 @@
 //! This library provides miscellaneous utility functions for unit and
 //! integration tests in Rust.
 
-mod data;
-pub use data::*;
-
 mod exec;
 pub use exec::*;
 
@@ -12,3 +9,6 @@ pub use server::*;
 
 mod temp;
 pub use temp::*;
+
+mod testdata;
+pub use testdata::*;

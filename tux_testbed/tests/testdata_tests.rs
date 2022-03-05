@@ -1,7 +1,7 @@
 use tux::*;
 
 #[test]
-fn testdata_reverse_case_works() {
+fn testdata_successful_case_does_not_panic() {
 	testdata("tests/testdata/reverse", |mut input| {
 		input.reverse();
 		input
@@ -10,7 +10,7 @@ fn testdata_reverse_case_works() {
 
 #[test]
 #[should_panic = "tests failed"]
-fn testdata_failed_case_fails() {
+fn testdata_failed_case_panics() {
 	testdata("tests/testdata/failed", |input| input);
 }
 
