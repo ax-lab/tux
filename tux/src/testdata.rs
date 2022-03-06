@@ -141,10 +141,18 @@ where
 	TestDataResult { tests }
 }
 
+//============================================================================//
+// Unit tests
+//============================================================================//
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::{temp_dir, TestTempDir};
+
+	//------------------------------------------------------------------------//
+	// Basic tests
+	//------------------------------------------------------------------------//
 
 	#[test]
 	fn testdata_runs_test_callback() {
@@ -196,6 +204,81 @@ mod tests {
 	}
 
 	#[test]
+	fn testdata_runs_test_callback_for_each_input() {
+		let dir = temp_dir();
+		helper::write_case(&dir, "a.input", "input A", "");
+		helper::write_case(&dir, "b.input", "input B", "");
+		helper::write_case(&dir, "c.input", "input C", "");
+
+		let mut test_callback_inputs = Vec::new();
+		testdata(dir.path(), |input| {
+			let input = input.join("\n");
+			test_callback_inputs.push(input);
+			Vec::new()
+		});
+
+		let expected = vec![
+			"input A".to_string(),
+			"input B".to_string(),
+			"input C".to_string(),
+		];
+		assert_eq!(test_callback_inputs, expected);
+	}
+
+	#[test]
+	fn testdata_recurses_into_subdirectories() {
+		let dir = temp_dir();
+		helper::write_case(&dir, "a1.input", "a1", "");
+		helper::write_case(&dir, "a2.input", "a2", "");
+		helper::write_case(&dir, "a3.input", "a3", "");
+		helper::write_case(&dir, "a1/a.input", "a1/a", "");
+		helper::write_case(&dir, "a1/b.input", "a1/b", "");
+		helper::write_case(&dir, "a2/a.input", "a2/a", "");
+		helper::write_case(&dir, "a2/b.input", "a2/b", "");
+		helper::write_case(&dir, "a2/sub/file.input", "a2/sub/file", "");
+
+		let mut test_callback_inputs = Vec::new();
+		testdata(dir.path(), |input| {
+			let input = input.join("\n");
+			test_callback_inputs.push(input);
+			Vec::new()
+		});
+
+		let expected = vec![
+			"a1".to_string(),
+			"a2".to_string(),
+			"a3".to_string(),
+			"a1/a".to_string(),
+			"a1/b".to_string(),
+			"a2/a".to_string(),
+			"a2/b".to_string(),
+			"a2/sub/file".to_string(),
+		];
+		assert_eq!(test_callback_inputs, expected);
+	}
+
+	#[test]
+	fn testdata_fails_and_generate_an_output_file_if_one_does_not_exist() {
+		let dir = temp_dir();
+		dir.create_file("test.input", "Some Input");
+
+		let result = testdata_to_result(dir.path(), |input| {
+			input.into_iter().map(|x| x.to_lowercase()).collect()
+		});
+		assert!(!result.success());
+
+		let new_result_path = dir.path().join("test.valid.new");
+		assert!(new_result_path.is_file());
+
+		let new_result_text = std::fs::read_to_string(new_result_path).unwrap();
+		assert_eq!(new_result_text, "some input");
+	}
+
+	//------------------------------------------------------------------------//
+	// Input & output trimming
+	//------------------------------------------------------------------------//
+
+	#[test]
 	fn testdata_trims_input_files() {
 		let dir = temp_dir();
 		helper::write_case(&dir, "test.input", "\n\nfirst\ntrim end:  \nlast\n\n", "");
@@ -234,80 +317,16 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_should_not_ignore_trailing_indentation_of_first_line() {
+	fn testdata_does_not_ignore_trailing_indentation_of_first_line() {
 		let dir = temp_dir();
 		helper::write_case(&dir, "test.input", "value", "  value");
 		let res = testdata_to_result(dir.path(), |input| input);
 		assert!(!res.success());
 	}
 
-	#[test]
-	fn testdata_trim_leading_empty_lines_and_trailing_space_in_the_input() {
-		let dir = temp_dir();
-		helper::write_case(&dir, "a.input", "\n  \n  a\n\nb\nc  \n  \n\n", "");
-
-		let mut test_input = String::new();
-		testdata(dir.path(), |input| {
-			test_input = input.join("\n");
-			Vec::new()
-		});
-
-		assert_eq!(test_input, "  a\n\nb\nc");
-	}
-
-	#[test]
-	fn testdata_runs_test_callback_for_each_input() {
-		let dir = temp_dir();
-		helper::write_case(&dir, "a.input", "input A", "");
-		helper::write_case(&dir, "b.input", "input B", "");
-		helper::write_case(&dir, "c.input", "input C", "");
-
-		let mut test_callback_inputs = Vec::new();
-		testdata(dir.path(), |input| {
-			let input = input.join("\n");
-			test_callback_inputs.push(input);
-			Vec::new()
-		});
-
-		let expected = vec![
-			"input A".to_string(),
-			"input B".to_string(),
-			"input C".to_string(),
-		];
-		assert_eq!(test_callback_inputs, expected);
-	}
-
-	#[test]
-	fn testdata_checks_subdirectories() {
-		let dir = temp_dir();
-		helper::write_case(&dir, "a1.input", "a1", "");
-		helper::write_case(&dir, "a2.input", "a2", "");
-		helper::write_case(&dir, "a3.input", "a3", "");
-		helper::write_case(&dir, "a1/a.input", "a1/a", "");
-		helper::write_case(&dir, "a1/b.input", "a1/b", "");
-		helper::write_case(&dir, "a2/a.input", "a2/a", "");
-		helper::write_case(&dir, "a2/b.input", "a2/b", "");
-		helper::write_case(&dir, "a2/sub/file.input", "a2/sub/file", "");
-
-		let mut test_callback_inputs = Vec::new();
-		testdata(dir.path(), |input| {
-			let input = input.join("\n");
-			test_callback_inputs.push(input);
-			Vec::new()
-		});
-
-		let expected = vec![
-			"a1".to_string(),
-			"a2".to_string(),
-			"a3".to_string(),
-			"a1/a".to_string(),
-			"a1/b".to_string(),
-			"a2/a".to_string(),
-			"a2/b".to_string(),
-			"a2/sub/file".to_string(),
-		];
-		assert_eq!(test_callback_inputs, expected);
-	}
+	//------------------------------------------------------------------------//
+	// TestDataResult
+	//------------------------------------------------------------------------//
 
 	#[test]
 	fn testdata_to_result_returns_ok_for_valid_case() {
@@ -343,24 +362,7 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_should_fail_and_generate_an_output_file_if_one_does_not_exist() {
-		let dir = temp_dir();
-		dir.create_file("test.input", "Some Input");
-
-		let result = testdata_to_result(dir.path(), |input| {
-			input.into_iter().map(|x| x.to_lowercase()).collect()
-		});
-		assert!(!result.success());
-
-		let new_result_path = dir.path().join("test.valid.new");
-		assert!(new_result_path.is_file());
-
-		let new_result_text = std::fs::read_to_string(new_result_path).unwrap();
-		assert_eq!(new_result_text, "some input");
-	}
-
-	#[test]
-	fn testdata_to_result_should_fail_if_output_does_not_match() {
+	fn testdata_to_result_fails_if_output_does_not_match() {
 		let dir = temp_dir();
 		helper::write_case(&dir, "a.input", "Valid 1", "valid 1");
 		helper::write_case(&dir, "b.input", "Valid 2", "valid 2");
@@ -381,6 +383,10 @@ mod tests {
 		assert!(result.tests[1].success);
 		assert!(!result.tests[2].success);
 	}
+
+	//------------------------------------------------------------------------//
+	// Helper code
+	//------------------------------------------------------------------------//
 
 	mod helper {
 		use super::*;
