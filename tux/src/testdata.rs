@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, io::ErrorKind, path::Path};
+use std::{
+	collections::VecDeque,
+	io::ErrorKind,
+	path::{Path, PathBuf},
+};
 
 const TEST_INPUT_FILE_EXTENSION: &'static str = "input";
 const TEST_OUTPUT_FILE_EXTENSION: &'static str = "valid";
@@ -40,6 +44,14 @@ struct TestDataResult {
 	pub tests: Vec<TestDataResultItem>,
 }
 
+#[derive(Debug)]
+struct TestDataResultItem {
+	pub success: bool,
+
+	#[allow(dead_code)]
+	pub name: String,
+}
+
 impl TestDataResult {
 	pub fn success(&self) -> bool {
 		for it in self.tests.iter() {
@@ -51,74 +63,36 @@ impl TestDataResult {
 	}
 }
 
-#[derive(Debug)]
-struct TestDataResultItem {
-	pub success: bool,
-
-	#[allow(dead_code)]
-	pub name: String,
-}
-
-fn testdata_to_result<P, F>(path: P, mut callback: F) -> TestDataResult
+fn testdata_to_result<P, F>(root_path: P, mut test_callback: F) -> TestDataResult
 where
 	P: AsRef<Path>,
 	F: FnMut(Vec<String>) -> Vec<String>,
 {
-	let root_path = path.as_ref();
-	let mut test_input_list = Vec::new();
+	let root_path = root_path.as_ref();
 
-	let mut dir_queue = VecDeque::new();
-	dir_queue.push_back((root_path.to_owned(), String::new()));
+	let mut test_results = Vec::new();
+	let test_inputs_with_name = collect_test_inputs_with_name(root_path);
 
-	while let Some((next_path, base_name)) = dir_queue.pop_front() {
-		let entries = std::fs::read_dir(&next_path).expect("reading test directory");
-		let entries = entries.map(|x| x.expect("reading test directory entry"));
-
-		let mut entries = entries.collect::<Vec<_>>();
-		entries.sort_by_key(|x| x.file_name());
-
-		for entry in entries {
-			let entry_path = entry.path();
-			let entry_name = if base_name.len() > 0 {
-				format!("{}/{}", base_name, entry.file_name().to_string_lossy())
-			} else {
-				entry.file_name().to_string_lossy().to_string()
-			};
-
-			let entry = std::fs::metadata(&entry_path).expect("reading test directory metadata");
-			if entry.is_dir() {
-				dir_queue.push_back((entry_path, entry_name));
-			} else if let Some(extension) = entry_path.extension() {
-				if extension == TEST_INPUT_FILE_EXTENSION {
-					test_input_list.push((entry_path, entry_name));
-				}
-			}
-		}
-	}
-
-	let mut success = true;
-	let mut tests = Vec::new();
-
-	for (path, name) in test_input_list.into_iter() {
-		let input = std::fs::read_to_string(&path).expect("reading test input file");
+	for (input_path, test_name) in test_inputs_with_name.into_iter() {
+		let input = std::fs::read_to_string(&input_path).expect("reading test input file");
 		let input = super::text::lines(input);
 
-		let mut test_success = true;
-		let output = callback(input);
+		let mut test_succeeded = true;
+		let output = test_callback(input);
 		let output = output.join("\n");
 
-		let mut output_path = path.clone();
+		let mut output_path = input_path.clone();
 		output_path.set_extension(TEST_OUTPUT_FILE_EXTENSION);
 		match std::fs::read_to_string(&output_path) {
-			Ok(expected) => {
-				let expected = super::text::lines(expected);
-				let expected = expected.join("\n");
-				if output != expected {
-					test_success = false;
+			Ok(expected_output) => {
+				let expected_output = super::text::lines(expected_output);
+				let expected_output = expected_output.join("\n");
+				if output != expected_output {
+					test_succeeded = false;
 				}
 			}
 			Err(err) => {
-				test_success = false;
+				test_succeeded = false;
 				if err.kind() == ErrorKind::NotFound {
 					// for convenience, if the test output is not found we
 					// generate a new one with the current test output
@@ -126,19 +100,57 @@ where
 					output_path.set_extension(TEST_NEW_OUTPUT_FILE_EXTENSION);
 					std::fs::write(output_path, output).expect("writing new test output");
 				} else {
-					panic!("failed to read output file for {}: {}", name, err);
+					panic!("failed to read output file for {}: {}", test_name, err);
 				}
 			}
 		}
 
-		success = success && test_success;
-		tests.push(TestDataResultItem {
-			success: test_success,
-			name: name,
+		test_results.push(TestDataResultItem {
+			success: test_succeeded,
+			name: test_name,
 		})
 	}
 
-	TestDataResult { tests }
+	TestDataResult {
+		tests: test_results,
+	}
+}
+
+fn collect_test_inputs_with_name(root_path: &Path) -> Vec<(PathBuf, String)> {
+	let mut test_inputs_with_name = Vec::new();
+
+	let mut dirs_to_scan_with_name = VecDeque::new();
+	dirs_to_scan_with_name.push_back((root_path.to_owned(), String::new()));
+
+	while let Some((current_dir, current_name)) = dirs_to_scan_with_name.pop_front() {
+		let entries = std::fs::read_dir(&current_dir).expect("reading test directory");
+		let entries = entries.map(|x| x.expect("reading test directory entry"));
+
+		// the order here is important to keep the sort order for tests
+		let mut entries = entries.collect::<Vec<_>>();
+		entries.sort_by_key(|x| x.file_name());
+
+		for entry in entries {
+			let entry_path = entry.path();
+			let entry_name = if current_name.len() > 0 {
+				format!("{}/{}", current_name, entry.file_name().to_string_lossy())
+			} else {
+				entry.file_name().to_string_lossy().to_string()
+			};
+
+			let entry_info =
+				std::fs::metadata(&entry_path).expect("reading test directory metadata");
+			if entry_info.is_dir() {
+				dirs_to_scan_with_name.push_back((entry_path, entry_name));
+			} else if let Some(extension) = entry_path.extension() {
+				if extension == TEST_INPUT_FILE_EXTENSION {
+					test_inputs_with_name.push((entry_path, entry_name));
+				}
+			}
+		}
+	}
+
+	test_inputs_with_name
 }
 
 //============================================================================//
