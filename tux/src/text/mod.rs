@@ -1,3 +1,6 @@
+mod join_lines;
+pub use join_lines::*;
+
 mod lines;
 pub use lines::*;
 
