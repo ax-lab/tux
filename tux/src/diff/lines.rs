@@ -5,7 +5,7 @@ pub enum Diff {
 	Delete(usize, usize),
 }
 
-pub fn diff_lines<A, B>(source: &[A], result: &[B]) -> Vec<Diff>
+pub fn lines<A, B>(source: &[A], result: &[B]) -> Vec<Diff>
 where
 	A: AsRef<str>,
 	B: AsRef<str>,
@@ -62,7 +62,7 @@ mod tests {
 	fn diff_lines_empty() {
 		let a: Vec<String> = Vec::new();
 		let b: Vec<String> = Vec::new();
-		let diff = diff_lines(&a, &b);
+		let diff = lines(&a, &b);
 		assert!(diff.len() == 0);
 	}
 
@@ -70,7 +70,7 @@ mod tests {
 	fn diff_lines_equal() {
 		let a = vec!["line 1", "line 2"];
 		let b = vec!["line 1", "line 2"];
-		let diff = diff_lines(&a, &b);
+		let diff = lines(&a, &b);
 		assert!(diff.len() == 0);
 	}
 
@@ -149,7 +149,7 @@ mod tests {
 		use super::*;
 
 		pub fn diff_to_text(a: Vec<&str>, b: Vec<&str>) -> String {
-			let diff = diff_lines(&a, &b);
+			let diff = lines(&a, &b);
 			diff_to_string(diff, &a, &b)
 		}
 
