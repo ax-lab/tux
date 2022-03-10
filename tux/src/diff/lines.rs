@@ -10,57 +10,60 @@ where
 	A: AsRef<str>,
 	B: AsRef<str>,
 {
-	let mut common_start = None;
-	'out: for i in 0..source.len() {
-		for j in 0..result.len() {
-			if source[i].as_ref() == result[j].as_ref() {
-				common_start = Some((i, j));
-				break 'out;
-			}
-		}
-	}
-
 	let mut diff = Vec::new();
 
-	if let Some((source_sta, result_sta)) = common_start {
-		let mut source_end = source_sta + 1;
-		let mut result_end = result_sta + 1;
-		while true
-			&& source_end < source.len()
-			&& result_end < result.len()
-			&& source[source_end].as_ref() == result[result_end].as_ref()
-		{
-			source_end += 1;
-			result_end += 1;
+	let mut source_pos = 0;
+	let mut result_pos = 0;
+
+	while source_pos < source.len() || result_pos < result.len() {
+		let mut common_start = None;
+		'out: for i in source_pos..source.len() {
+			for j in result_pos..result.len() {
+				if source[i].as_ref() == result[j].as_ref() {
+					common_start = Some((i, j));
+					break 'out;
+				}
+			}
 		}
 
-		if source_sta > 0 {
-			diff.push(Diff::Delete(0, source_sta));
-		}
-		if result_sta > 0 {
-			diff.push(Diff::Insert(0, result_sta));
-		}
+		if let Some((source_sta, result_sta)) = common_start {
+			let mut source_end = source_sta + 1;
+			let mut result_end = result_sta + 1;
+			while true
+				&& source_end < source.len()
+				&& result_end < result.len()
+				&& source[source_end].as_ref() == result[result_end].as_ref()
+			{
+				source_end += 1;
+				result_end += 1;
+			}
 
-		let are_equal =
-			source_sta == 0 && source_end == source.len() && source.len() == result.len();
-		if !are_equal {
-			diff.push(Diff::Output(source_sta, source_end));
-		}
+			if source_sta > source_pos {
+				diff.push(Diff::Delete(source_pos, source_sta));
+			}
+			if result_sta > result_pos {
+				diff.push(Diff::Insert(result_pos, result_sta));
+			}
 
-		if source_end < source.len() {
-			diff.push(Diff::Delete(source_end, source.len()));
-		}
-		if result_end < result.len() {
-			diff.push(Diff::Insert(result_end, result.len()));
-		}
-	} else {
-		if source.len() > 0 {
-			diff.push(Diff::Delete(0, source.len()));
-		}
-		if result.len() > 0 {
-			diff.push(Diff::Insert(0, result.len()));
-		}
-	};
+			let are_equal =
+				source_sta == 0 && source_end == source.len() && source.len() == result.len();
+			if !are_equal {
+				diff.push(Diff::Output(source_sta, source_end));
+			}
+
+			source_pos = source_end;
+			result_pos = result_end;
+		} else {
+			if source_pos < source.len() {
+				diff.push(Diff::Delete(source_pos, source.len()));
+			}
+			if result_pos < result.len() {
+				diff.push(Diff::Insert(result_pos, result.len()));
+			}
+			source_pos = source.len();
+			result_pos = result.len();
+		};
+	}
 
 	diff
 }
@@ -193,6 +196,48 @@ mod tests {
 				" same 2",
 				"+suffix 1",
 				"+suffix 2"
+			])
+		);
+	}
+
+	#[test]
+	fn diff_lines_added_with_two_common_lines() {
+		let a = vec!["same 1", "same 2"];
+		let b = vec!["prefix", "same 1", "between", "same 2", "suffix"];
+		let diff = helper::diff_to_text(a, b);
+		assert_eq!(
+			diff,
+			text::join_lines(["+prefix", " same 1", "+between", " same 2", "+suffix"])
+		);
+	}
+
+	#[test]
+	fn diff_lines_removed_with_two_common_lines() {
+		let a = vec!["prefix", "same 1", "between", "same 2", "suffix"];
+		let b = vec!["same 1", "same 2"];
+		let diff = helper::diff_to_text(a, b);
+		assert_eq!(
+			diff,
+			text::join_lines(["-prefix", " same 1", "-between", " same 2", "-suffix"])
+		);
+	}
+
+	#[test]
+	fn diff_lines_with_different_contents_with_two_common_lines() {
+		let a = vec!["prefix A", "same 1", "between A", "same 2", "suffix A"];
+		let b = vec!["prefix B", "same 1", "between B", "same 2", "suffix B"];
+		let diff = helper::diff_to_text(a, b);
+		assert_eq!(
+			diff,
+			text::join_lines([
+				"-prefix A",
+				"+prefix B",
+				" same 1",
+				"-between A",
+				"+between B",
+				" same 2",
+				"-suffix A",
+				"+suffix B"
 			])
 		);
 	}
