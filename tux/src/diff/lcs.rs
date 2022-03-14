@@ -1,65 +1,92 @@
-pub fn lcs<T>(a: &[T], b: &[T]) -> Vec<(usize, usize)>
+/// Returns the longest common subsequence between the two input slices.
+///
+/// The sequence is returned as a vector of tuples, where each tuple
+/// contains the indexes of a pair of common items in both inputs.
+pub fn lcs<T>(list_a: &[T], list_b: &[T]) -> Vec<(usize, usize)>
 where
 	T: std::cmp::PartialEq,
 {
-	if a.len() == 0 || b.len() == 0 {
+	if list_a.len() == 0 || list_b.len() == 0 {
 		return Vec::new();
 	}
 
-	let mut seq_len = Vec::new();
-	seq_len.resize(a.len() * b.len(), 0);
+	// First we compute the LCS length between each suffix of A and B
+	// and store them in a flattened matrix in row-major order.
 
-	let index = |i, j| i * b.len() + j;
+	let mut lcs_len_for_suffix = Vec::new();
+	lcs_len_for_suffix.resize(list_a.len() * list_b.len(), 0);
 
-	let last_a = a.len() - 1;
-	let last_b = b.len() - 1;
-	for i in (0..a.len()).into_iter().rev() {
-		for j in (0..b.len()).into_iter().rev() {
-			let pos = index(i, j);
-			if a[i] == b[j] {
-				seq_len[pos] = 1 + if i < last_a && j < last_b {
-					seq_len[index(i + 1, j + 1)]
+	let suffix = |pos_a, pos_b| pos_a * list_b.len() + pos_b;
+
+	let last_a = list_a.len() - 1;
+	let last_b = list_b.len() - 1;
+
+	for a in (0..list_a.len()).rev() {
+		for b in (0..list_b.len()).rev() {
+			let items_are_equal = list_a[a] == list_b[b];
+			lcs_len_for_suffix[suffix(a, b)] = if items_are_equal {
+				let has_suffixes_after = a < last_a && b < last_b;
+				let suffix_len = if has_suffixes_after {
+					lcs_len_for_suffix[suffix(a + 1, b + 1)]
 				} else {
 					0
 				};
+				1 + suffix_len
 			} else {
-				seq_len[pos] = std::cmp::max(
-					if i < last_a {
-						seq_len[index(i + 1, j)]
-					} else {
-						0
-					},
-					if j < last_b {
-						seq_len[index(i, j + 1)]
-					} else {
-						0
-					},
-				);
+				let len_skipping_a = if a < last_a {
+					lcs_len_for_suffix[suffix(a + 1, b)]
+				} else {
+					0
+				};
+				let len_skipping_b = if b < last_b {
+					lcs_len_for_suffix[suffix(a, b + 1)]
+				} else {
+					0
+				};
+				std::cmp::max(len_skipping_a, len_skipping_b)
+			};
+		}
+	}
+
+	// Now that we computed the LCS length for all combinations of suffixes
+	// between A and B, we can use that to build the actual LCS.
+
+	let mut longest_sequence = Vec::new();
+
+	// Iterate both lists until we reach the end of either list. When items
+	// between the lists differ, we use the computed LCS length matrix to
+	// decide whether the best solution skips an item from A or B.
+	let mut a = 0;
+	let mut b = 0;
+	while a < list_a.len() && b < list_b.len() {
+		if list_a[a] == list_b[b] {
+			longest_sequence.push((a, b));
+			a += 1;
+			b += 1;
+		} else {
+			let not_last_item = a < last_a && b < last_b;
+			if not_last_item {
+				let len_skipping_a = lcs_len_for_suffix[suffix(a + 1, b)];
+				let len_skipping_b = lcs_len_for_suffix[suffix(a, b + 1)];
+				if len_skipping_a > len_skipping_b {
+					a += 1;
+				} else {
+					b += 1;
+				}
+			} else {
+				// when we reach the last item of either list, just iterate the
+				// other until we have a match or exhausted both lists
+				let remaining_are_from_a = a < last_a;
+				if remaining_are_from_a {
+					a += 1;
+				} else {
+					b += 1;
+				}
 			}
 		}
 	}
 
-	let mut out = Vec::new();
-	let mut i = 0;
-	let mut j = 0;
-	while i < a.len() && j < b.len() {
-		if a[i] == b[j] {
-			out.push((i, j));
-			i += 1;
-			j += 1;
-		} else if i < last_a && j < last_b {
-			if seq_len[index(i + 1, j)] > seq_len[index(i, j + 1)] {
-				i += 1;
-			} else {
-				j += 1;
-			}
-		} else if i < last_a {
-			i += 1;
-		} else {
-			j += 1;
-		}
-	}
-	out
+	longest_sequence
 }
 
 #[cfg(test)]
