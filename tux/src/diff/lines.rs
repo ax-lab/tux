@@ -1,61 +1,87 @@
+/// Entry for a diff between two lists of items. Each entry represents an edit
+/// operation that applies to the source list to reach the result list.
 #[derive(Debug)]
 pub enum Diff {
+	/// Output a range from the source list that is also present in the
+	/// result list.
+	///
+	/// The range is given by the indexes `(start, end)` from the `source`
+	/// list, where `end` is exclusive.
 	Output(usize, usize),
-	Insert(usize, usize),
+
+	/// Delete a range from the source list.
+	///
+	/// The range is given by the indexes `(start, end)` from the `source`
+	/// list, where `end` is exclusive.
 	Delete(usize, usize),
+
+	/// Insert a range from the result list into the source list.
+	///
+	/// The range is given by the indexes `(start, end)` from the `result`
+	/// list.
+	///
+	/// The insertion point in the `source` list is always at the end of
+	/// the previous [`Diff::Output`] or [`Diff::Insert`] entry in the diff.
+	Insert(usize, usize),
 }
 
+/// Computes the line difference from `source` to `result`.
+///
+/// Returns a list of [`Diff`] entries. If `source` and `result` are equal,
+/// the returned list is empty.
 pub fn lines<T>(source: &[T], result: &[T]) -> Vec<Diff>
 where
 	T: AsRef<str> + std::cmp::PartialEq,
 {
 	let common_prefix = {
-		let mut count = 0;
-		while count < source.len() && count < result.len() && source[count] == result[count] {
-			count += 1;
+		let mut len = 0;
+		while len < source.len() && len < result.len() && source[len] == result[len] {
+			len += 1;
 		}
-		count
+		len
 	};
 
 	let source = &source[common_prefix..];
 	let result = &result[common_prefix..];
 
-	if source.len() == 0 && result.len() == 0 {
+	let no_difference = source.len() == 0 && result.len() == 0;
+	if no_difference {
 		return Vec::new();
 	}
 
 	let common_suffix = {
 		let from_last = |slice: &[T], offset| slice.len() - offset - 1;
-		let mut count = 0;
-		while count < source.len()
-			&& count < result.len()
-			&& source[from_last(source, count)] == result[from_last(result, count)]
+		let mut len = 0;
+		while len < source.len()
+			&& len < result.len()
+			&& source[from_last(source, len)] == result[from_last(result, len)]
 		{
-			count += 1;
+			len += 1;
 		}
-		count
+		len
 	};
 
 	let source = &source[..source.len() - common_suffix];
 	let result = &result[..result.len() - common_suffix];
 
-	let lcs = super::lcs(source, result);
+	let common_subsequence = super::lcs(source, result);
 
-	let offset = common_prefix;
 	let mut diff = Vec::new();
-	let mut last_source = 0;
-	let mut last_result = 0;
-
 	if common_prefix > 0 {
 		diff.push(Diff::Output(0, common_prefix));
 	}
 
-	for (line_source, line_result) in lcs {
-		if line_source > last_source {
-			diff.push(Diff::Delete(last_source + offset, line_source + offset));
+	let mut cur_source = 0;
+	let mut cur_result = 0;
+
+	let offset = common_prefix;
+	for (line_source, line_result) in common_subsequence {
+		if line_source > cur_source {
+			diff.push(Diff::Delete(cur_source + offset, line_source + offset));
 		}
-		if line_result > last_result {
-			diff.push(Diff::Insert(last_result + offset, line_result + offset));
+
+		if line_result > cur_result {
+			diff.push(Diff::Insert(cur_result + offset, line_result + offset));
 		}
 
 		let current_line = line_source + offset;
@@ -68,16 +94,16 @@ where
 			}
 		}
 
-		last_source = line_source + 1;
-		last_result = line_result + 1;
+		cur_source = line_source + 1;
+		cur_result = line_result + 1;
 	}
 
-	if last_source < source.len() {
-		diff.push(Diff::Delete(last_source + offset, source.len() + offset));
+	if cur_source < source.len() {
+		diff.push(Diff::Delete(cur_source + offset, source.len() + offset));
 	}
 
-	if last_result < result.len() {
-		diff.push(Diff::Insert(last_result + offset, result.len() + offset));
+	if cur_result < result.len() {
+		diff.push(Diff::Insert(cur_result + offset, result.len() + offset));
 	}
 
 	if common_suffix > 0 {
