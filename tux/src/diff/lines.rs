@@ -57,7 +57,17 @@ where
 		if line_result > last_result {
 			diff.push(Diff::Insert(last_result + offset, line_result + offset));
 		}
-		diff.push(Diff::Output(line_source + offset, line_source + 1 + offset));
+
+		let current_line = line_source + offset;
+		match diff.last_mut() {
+			Some(Diff::Output(_, end)) if *end == current_line => {
+				*end = current_line + 1;
+			}
+			_ => {
+				diff.push(Diff::Output(current_line, current_line + 1));
+			}
+		}
+
 		last_source = line_source + 1;
 		last_result = line_result + 1;
 	}
@@ -273,6 +283,7 @@ mod tests {
 
 		pub fn diff_to_text(a: Vec<&str>, b: Vec<&str>) -> String {
 			let diff = lines(&a, &b);
+			let diff = sanity_check_diff(diff);
 			diff_to_string(diff, &a, &b)
 		}
 
@@ -294,6 +305,41 @@ mod tests {
 				})
 				.collect::<Vec<String>>();
 			output.join("\n")
+		}
+
+		fn sanity_check_diff(diff: Vec<Diff>) -> Vec<Diff> {
+			check_diff_does_not_have_contiguous_output_ranges(&diff);
+			diff
+		}
+
+		fn check_diff_does_not_have_contiguous_output_ranges(diff: &Vec<Diff>) {
+			let all_output_ranges = diff.iter().map(|x| {
+				if let &Diff::Output(a, b) = x {
+					Some((a, b))
+				} else {
+					None
+				}
+			});
+
+			let mut last_range_end = None;
+			let contiguous_output_ranges = all_output_ranges.filter(|x| {
+				if let &Some((start, end)) = x {
+					let is_contiguous = if let Some(last_range_end) = last_range_end {
+						start == last_range_end
+					} else {
+						false
+					};
+					last_range_end = Some(end);
+					is_contiguous
+				} else {
+					last_range_end = None;
+					false
+				}
+			});
+
+			if contiguous_output_ranges.count() > 0 {
+				panic!("diff produced contiguous output ranges:\n{:?}", diff);
+			}
 		}
 	}
 }
