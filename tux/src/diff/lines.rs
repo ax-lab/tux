@@ -5,64 +5,76 @@ pub enum Diff {
 	Delete(usize, usize),
 }
 
-pub fn lines<A, B>(source: &[A], result: &[B]) -> Vec<Diff>
+pub fn lines<T>(source: &[T], result: &[T]) -> Vec<Diff>
 where
-	A: AsRef<str>,
-	B: AsRef<str>,
+	T: AsRef<str> + std::cmp::PartialEq,
 {
-	let mut diff = Vec::new();
-
-	let mut source_pos = 0;
-	let mut result_pos = 0;
-
-	while source_pos < source.len() || result_pos < result.len() {
-		let mut common_start = None;
-		'out: for i in source_pos..source.len() {
-			for j in result_pos..result.len() {
-				if source[i].as_ref() == result[j].as_ref() {
-					common_start = Some((i, j));
-					break 'out;
-				}
-			}
+	let common_prefix = {
+		let mut count = 0;
+		while count < source.len() && count < result.len() && source[count] == result[count] {
+			count += 1;
 		}
+		count
+	};
 
-		if let Some((source_sta, result_sta)) = common_start {
-			let mut source_end = source_sta + 1;
-			let mut result_end = result_sta + 1;
-			while true
-				&& source_end < source.len()
-				&& result_end < result.len()
-				&& source[source_end].as_ref() == result[result_end].as_ref()
-			{
-				source_end += 1;
-				result_end += 1;
-			}
+	let source = &source[common_prefix..];
+	let result = &result[common_prefix..];
 
-			if source_sta > source_pos {
-				diff.push(Diff::Delete(source_pos, source_sta));
-			}
-			if result_sta > result_pos {
-				diff.push(Diff::Insert(result_pos, result_sta));
-			}
+	if source.len() == 0 && result.len() == 0 {
+		return Vec::new();
+	}
 
-			let are_equal =
-				source_sta == 0 && source_end == source.len() && source.len() == result.len();
-			if !are_equal {
-				diff.push(Diff::Output(source_sta, source_end));
-			}
+	let common_suffix = {
+		let from_last = |slice: &[T], offset| slice.len() - offset - 1;
+		let mut count = 0;
+		while count < source.len()
+			&& count < result.len()
+			&& source[from_last(source, count)] == result[from_last(result, count)]
+		{
+			count += 1;
+		}
+		count
+	};
 
-			source_pos = source_end;
-			result_pos = result_end;
-		} else {
-			if source_pos < source.len() {
-				diff.push(Diff::Delete(source_pos, source.len()));
-			}
-			if result_pos < result.len() {
-				diff.push(Diff::Insert(result_pos, result.len()));
-			}
-			source_pos = source.len();
-			result_pos = result.len();
-		};
+	let source = &source[..source.len() - common_suffix];
+	let result = &result[..result.len() - common_suffix];
+
+	let lcs = super::lcs(source, result);
+
+	let offset = common_prefix;
+	let mut diff = Vec::new();
+	let mut last_source = 0;
+	let mut last_result = 0;
+
+	if common_prefix > 0 {
+		diff.push(Diff::Output(0, common_prefix));
+	}
+
+	for (line_source, line_result) in lcs {
+		if line_source > last_source {
+			diff.push(Diff::Delete(last_source + offset, line_source + offset));
+		}
+		if line_result > last_result {
+			diff.push(Diff::Insert(last_result + offset, line_result + offset));
+		}
+		diff.push(Diff::Output(line_source + offset, line_source + 1 + offset));
+		last_source = line_source + 1;
+		last_result = line_result + 1;
+	}
+
+	if last_source < source.len() {
+		diff.push(Diff::Delete(last_source + offset, source.len() + offset));
+	}
+
+	if last_result < result.len() {
+		diff.push(Diff::Insert(last_result + offset, result.len() + offset));
+	}
+
+	if common_suffix > 0 {
+		diff.push(Diff::Output(
+			source.len() + offset,
+			source.len() + offset + common_suffix,
+		));
 	}
 
 	diff
@@ -238,6 +250,20 @@ mod tests {
 				" same 2",
 				"-suffix A",
 				"+suffix B"
+			])
+		);
+	}
+
+	#[test]
+	fn diff_lines_with_non_trivial_common_sequence() {
+		let a = vec!["a1", "sX", "a2", "sW", "sX", "a3", "sY", "a4", "sZ"];
+		let b = vec!["b1", "b2", "sW", "sX", "b3", "sY", "b4", "sZ"];
+		let diff = helper::diff_to_text(a, b);
+		assert_eq!(
+			diff,
+			text::join_lines([
+				"-a1", "-sX", "-a2", "+b1", "+b2", " sW", " sX", "-a3", "+b3", " sY", "-a4", "+b4",
+				" sZ",
 			])
 		);
 	}
