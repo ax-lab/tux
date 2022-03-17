@@ -1,35 +1,37 @@
-/// Single operation in a diff between two lists of items. A complete diff
-/// consists of a sequence of these operations.
+/// Single element of a diff between a `source` and `result` list. A complete
+/// diff consists of a sequence of these elements.
 ///
-/// Using these operations and items from both lists it is possible to
-/// generate the diff representation.
+/// Each element applies to a number of items from either list. Only the
+/// count of items is kept, so diff elements must be considered in sequence,
+/// with each element moving forward the sequence anchor position for further
+/// elements.
 ///
-/// Each operation applies to a number of items from either list. Operations
-/// in the diff must be considered in sequence, with each operation moving
-/// forward in the respective list (or both lists).
+/// See also [`DiffResult`].
 #[derive(Debug)]
 pub enum Diff {
-	/// Output a sequence of items that are common between the `source`
-	/// and `result` lists. Moves forward in both lists.
+	/// Sequence of items that are common between the `source` and `result`
+	/// lists and output as-is.
+	///
+	/// Moves the anchor forward in both lists.
 	Output(usize),
 
-	/// Delete a sequence of items from the `source` list, moving forward
-	/// in the list.
+	/// Deleted sequence of items from the `source` list, moving the anchor
+	/// for the list forward.
 	Delete(usize),
 
-	/// Insert a sequence of items from the `result` list, moving forward
-	/// in the list.
+	/// Inserted sequence of items from the `result` list, moving the anchor
+	/// for the list forward.
 	Insert(usize),
 }
 
 /// Computes the difference between two lists containing lines of text.
-///
-/// Returns a vector of [`Diff`] entries from `source` to `result`. If
-/// the lists are equal, the returned vector is empty.
-pub fn lines<T>(source: &[T], result: &[T]) -> Vec<Diff>
+pub fn lines<'a, T>(source: &'a [T], result: &'a [T]) -> DiffResult<'a, T>
 where
 	T: AsRef<str> + std::cmp::PartialEq,
 {
+	let full_source = source;
+	let full_result = result;
+
 	let common_prefix = {
 		let mut len = 0;
 		while len < source.len() && len < result.len() && source[len] == result[len] {
@@ -43,7 +45,11 @@ where
 
 	let no_difference = source.len() == 0 && result.len() == 0;
 	if no_difference {
-		return Vec::new();
+		return DiffResult {
+			items: Vec::new(),
+			source: full_source,
+			result: full_result,
+		};
 	}
 
 	let common_suffix = {
@@ -105,7 +111,88 @@ where
 		diff.push(Diff::Output(common_suffix));
 	}
 
-	diff
+	DiffResult {
+		items: diff,
+		source: full_source,
+		result: full_result,
+	}
+}
+
+/// Result of a diff between a `source` and `result` list, consisting of a
+/// sequence of [`Diff`] items.
+///
+/// The result also keeps a reference to both lists and can generate a text
+/// representation of the diff.
+pub struct DiffResult<'a, T> {
+	items: Vec<Diff>,
+	source: &'a [T],
+	result: &'a [T],
+}
+
+impl<'a, T> DiffResult<'a, T> {
+	pub fn is_empty(&self) -> bool {
+		self.items.len() == 0
+	}
+
+	pub fn items(&self) -> &Vec<Diff> {
+		&self.items
+	}
+}
+
+impl<'a, T> std::fmt::Display for DiffResult<'a, T>
+where
+	T: std::fmt::Display,
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let source = self.source;
+		let result = self.result;
+
+		let mut has_some_output = false;
+		let mut start_new_line = |f: &mut std::fmt::Formatter| -> std::fmt::Result {
+			if has_some_output {
+				write!(f, "\n")
+			} else {
+				has_some_output = true;
+				Ok(())
+			}
+		};
+
+		let mut offset_source = 0;
+		let mut offset_result = 0;
+		for item in &self.items {
+			match item {
+				Diff::Output(count) => {
+					let sta = offset_source;
+					let end = sta + count;
+					offset_source += count;
+					offset_result += count;
+					for x in sta..end {
+						start_new_line(f)?;
+						write!(f, " {}", source[x])?;
+					}
+				}
+				Diff::Insert(count) => {
+					let sta = offset_result;
+					let end = sta + count;
+					offset_result += count;
+					for x in sta..end {
+						start_new_line(f)?;
+						write!(f, "+{}", result[x])?;
+					}
+				}
+				Diff::Delete(count) => {
+					let sta = offset_source;
+					let end = sta + count;
+					offset_source += count;
+					for x in sta..end {
+						start_new_line(f)?;
+						write!(f, "-{}", source[x])?;
+					}
+				}
+			}
+		}
+		Ok(())
+	}
 }
 
 #[cfg(test)]
@@ -118,7 +205,7 @@ mod tests {
 		let a: Vec<String> = Vec::new();
 		let b: Vec<String> = Vec::new();
 		let diff = lines(&a, &b);
-		assert!(diff.len() == 0);
+		assert!(diff.is_empty());
 	}
 
 	#[test]
@@ -126,7 +213,7 @@ mod tests {
 		let a = vec!["line 1", "line 2"];
 		let b = vec!["line 1", "line 2"];
 		let diff = lines(&a, &b);
-		assert!(diff.len() == 0);
+		assert!(diff.is_empty());
 	}
 
 	#[test]
@@ -301,46 +388,13 @@ mod tests {
 
 		pub fn diff_to_text(a: Vec<&str>, b: Vec<&str>) -> String {
 			let diff = lines(&a, &b);
-			let diff = sanity_check_diff(diff);
-			diff_to_string(diff, &a, &b)
+			sanity_check_diff(&diff.items());
+			diff.to_string()
 		}
 
-		fn diff_to_string(diff: Vec<Diff>, source: &Vec<&str>, result: &Vec<&str>) -> String {
-			let mut offset_source = 0;
-			let mut offset_result = 0;
-			let output = diff
-				.into_iter()
-				.flat_map(|item| -> Vec<String> {
-					match item {
-						Diff::Output(count) => {
-							let sta = offset_source;
-							let end = sta + count;
-							offset_source += count;
-							offset_result += count;
-							(sta..end).map(|x| format!(" {}", source[x])).collect()
-						}
-						Diff::Insert(count) => {
-							let sta = offset_result;
-							let end = sta + count;
-							offset_result += count;
-							(sta..end).map(|x| format!("+{}", result[x])).collect()
-						}
-						Diff::Delete(count) => {
-							let sta = offset_source;
-							let end = sta + count;
-							offset_source += count;
-							(sta..end).map(|x| format!("-{}", source[x])).collect()
-						}
-					}
-				})
-				.collect::<Vec<String>>();
-			output.join("\n")
-		}
-
-		fn sanity_check_diff(diff: Vec<Diff>) -> Vec<Diff> {
-			check_diff_does_not_have_contiguous_output_ranges(&diff);
-			check_diff_does_not_have_empty_entries(&diff);
-			diff
+		fn sanity_check_diff(diff: &Vec<Diff>) {
+			check_diff_does_not_have_contiguous_output_ranges(diff);
+			check_diff_does_not_have_empty_entries(diff);
 		}
 
 		fn check_diff_does_not_have_empty_entries(diff: &Vec<Diff>) {
