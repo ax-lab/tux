@@ -1,7 +1,12 @@
+//! Wrapper around the `testdata` feature in the library. This is mainly to
+//! test the failed test conditions, which are hard to test as a unit test.
+
 fn main() {
 	let args = std::env::args().skip(1).collect::<Vec<_>>();
 
 	if args.len() == 1 && args[0] == "info" {
+		// this is used by the integration tests as a self-test that the
+		// executable can run
 		println!("tux testdata helper");
 		return;
 	}
@@ -12,7 +17,10 @@ fn main() {
 		std::process::exit(1);
 	}
 
-	let callback = match args[0].as_str() {
+	let arg_callback = &args[0];
+	let arg_testdata_dir = &args[1];
+
+	let callback = match arg_callback.as_str() {
 		"empty" => callback_empty,
 		"reverse" => callback_reverse,
 		"id" => callback_id,
@@ -23,7 +31,7 @@ fn main() {
 		}
 	};
 
-	tux::testdata(&args[1], callback);
+	tux::testdata(arg_testdata_dir, callback);
 
 	fn callback_empty(_: Vec<String>) -> Vec<String> {
 		Vec::new()
@@ -40,7 +48,7 @@ fn main() {
 }
 
 fn print_usage() {
-	println!("Executes the testdata function in the given directory, using the given mode.\n");
+	println!("Executes the testdata tests in the given directory, using the given function.\n");
 	println!("This is used as part of the test harness for tux.\n");
 	println!("Usage: (empty|reverse|id) DIRECTORY");
 }
