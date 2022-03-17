@@ -1,34 +1,31 @@
-/// Entry for a diff between two lists of items. Each entry represents an edit
-/// operation that applies to the source list to reach the result list.
+/// Single operation in a diff between two lists of items. A complete diff
+/// consists of a sequence of these operations.
+///
+/// Using these operations and items from both lists it is possible to
+/// generate the diff representation.
+///
+/// Each operation applies to a number of items from either list. Operations
+/// in the diff must be considered in sequence, with each operation moving
+/// forward in the respective list (or both lists).
 #[derive(Debug)]
 pub enum Diff {
-	/// Output a range from the source list that is also present in the
-	/// result list.
-	///
-	/// The range is given by the indexes `(start, end)` from the `source`
-	/// list, where `end` is exclusive.
-	Output(usize, usize),
+	/// Output a sequence of items that are common between the `source`
+	/// and `result` lists. Moves forward in both lists.
+	Output(usize),
 
-	/// Delete a range from the source list.
-	///
-	/// The range is given by the indexes `(start, end)` from the `source`
-	/// list, where `end` is exclusive.
-	Delete(usize, usize),
+	/// Delete a sequence of items from the `source` list, moving forward
+	/// in the list.
+	Delete(usize),
 
-	/// Insert a range from the result list into the source list.
-	///
-	/// The range is given by the indexes `(start, end)` from the `result`
-	/// list.
-	///
-	/// The insertion point in the `source` list is always at the end of
-	/// the previous [`Diff::Output`] or [`Diff::Insert`] entry in the diff.
-	Insert(usize, usize),
+	/// Insert a sequence of items from the `result` list, moving forward
+	/// in the list.
+	Insert(usize),
 }
 
-/// Computes the line difference from `source` to `result`.
+/// Computes the difference between two lists containing lines of text.
 ///
-/// Returns a list of [`Diff`] entries. If `source` and `result` are equal,
-/// the returned list is empty.
+/// Returns a vector of [`Diff`] entries from `source` to `result`. If
+/// the lists are equal, the returned vector is empty.
 pub fn lines<T>(source: &[T], result: &[T]) -> Vec<Diff>
 where
 	T: AsRef<str> + std::cmp::PartialEq,
@@ -68,29 +65,27 @@ where
 
 	let mut diff = Vec::new();
 	if common_prefix > 0 {
-		diff.push(Diff::Output(0, common_prefix));
+		diff.push(Diff::Output(common_prefix));
 	}
 
 	let mut cur_source = 0;
 	let mut cur_result = 0;
 
-	let offset = common_prefix;
 	for (line_source, line_result) in common_subsequence {
 		if line_source > cur_source {
-			diff.push(Diff::Delete(cur_source + offset, line_source + offset));
+			diff.push(Diff::Delete(line_source - cur_source));
 		}
 
 		if line_result > cur_result {
-			diff.push(Diff::Insert(cur_result + offset, line_result + offset));
+			diff.push(Diff::Insert(line_result - cur_result));
 		}
 
-		let current_line = line_source + offset;
 		match diff.last_mut() {
-			Some(Diff::Output(_, end)) if *end == current_line => {
-				*end = current_line + 1;
+			Some(Diff::Output(count)) => {
+				*count += 1;
 			}
 			_ => {
-				diff.push(Diff::Output(current_line, current_line + 1));
+				diff.push(Diff::Output(1));
 			}
 		}
 
@@ -99,18 +94,15 @@ where
 	}
 
 	if cur_source < source.len() {
-		diff.push(Diff::Delete(cur_source + offset, source.len() + offset));
+		diff.push(Diff::Delete(source.len() - cur_source));
 	}
 
 	if cur_result < result.len() {
-		diff.push(Diff::Insert(cur_result + offset, result.len() + offset));
+		diff.push(Diff::Insert(result.len() - cur_result));
 	}
 
 	if common_suffix > 0 {
-		diff.push(Diff::Output(
-			source.len() + offset,
-			source.len() + offset + common_suffix,
-		));
+		diff.push(Diff::Output(common_suffix));
 	}
 
 	diff
@@ -314,17 +306,29 @@ mod tests {
 		}
 
 		fn diff_to_string(diff: Vec<Diff>, source: &Vec<&str>, result: &Vec<&str>) -> String {
+			let mut offset_source = 0;
+			let mut offset_result = 0;
 			let output = diff
 				.into_iter()
 				.flat_map(|item| -> Vec<String> {
 					match item {
-						Diff::Output(sta, end) => {
+						Diff::Output(count) => {
+							let sta = offset_source;
+							let end = sta + count;
+							offset_source += count;
+							offset_result += count;
 							(sta..end).map(|x| format!(" {}", source[x])).collect()
 						}
-						Diff::Insert(sta, end) => {
+						Diff::Insert(count) => {
+							let sta = offset_result;
+							let end = sta + count;
+							offset_result += count;
 							(sta..end).map(|x| format!("+{}", result[x])).collect()
 						}
-						Diff::Delete(sta, end) => {
+						Diff::Delete(count) => {
+							let sta = offset_source;
+							let end = sta + count;
+							offset_source += count;
 							(sta..end).map(|x| format!("-{}", source[x])).collect()
 						}
 					}
@@ -335,30 +339,30 @@ mod tests {
 
 		fn sanity_check_diff(diff: Vec<Diff>) -> Vec<Diff> {
 			check_diff_does_not_have_contiguous_output_ranges(&diff);
+			check_diff_does_not_have_empty_entries(&diff);
 			diff
 		}
 
-		fn check_diff_does_not_have_contiguous_output_ranges(diff: &Vec<Diff>) {
-			let all_output_ranges = diff.iter().map(|x| {
-				if let &Diff::Output(a, b) = x {
-					Some((a, b))
-				} else {
-					None
+		fn check_diff_does_not_have_empty_entries(diff: &Vec<Diff>) {
+			for it in diff.iter() {
+				let is_empty = match it {
+					Diff::Output(size) | Diff::Insert(size) | Diff::Delete(size) => *size == 0,
+				};
+				if is_empty {
+					panic!("diff produced empty entries:\n{:?}", diff);
 				}
-			});
+			}
+		}
 
-			let mut last_range_end = None;
-			let contiguous_output_ranges = all_output_ranges.filter(|x| {
-				if let &Some((start, end)) = x {
-					let is_contiguous = if let Some(last_range_end) = last_range_end {
-						start == last_range_end
-					} else {
-						false
-					};
-					last_range_end = Some(end);
+		fn check_diff_does_not_have_contiguous_output_ranges(diff: &Vec<Diff>) {
+			let mut last_was_output = false;
+			let contiguous_output_ranges = diff.iter().filter(|x| {
+				if let Diff::Output(_) = x {
+					let is_contiguous = last_was_output;
+					last_was_output = true;
 					is_contiguous
 				} else {
-					last_range_end = None;
+					last_was_output = false;
 					false
 				}
 			});
