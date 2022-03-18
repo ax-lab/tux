@@ -34,8 +34,27 @@ where
 		}
 	}
 
+	for it in result.tests.iter() {
+		if !it.success {
+			eprintln!(
+				"\n=> `{}` output did not match `{}`:\n",
+				it.name, it.valid_file
+			);
+			let diff = super::diff::lines(&it.actual, &it.expect);
+			eprintln!("{}", diff);
+		}
+	}
+
 	if !result.success() {
-		panic!("tests failed");
+		eprintln!("\n===== Failed tests =====\n");
+		for it in result.tests.iter() {
+			if !it.success {
+				eprintln!("- {}", it.name);
+			}
+		}
+		eprintln!();
+
+		panic!("one or more tests failed");
 	}
 }
 
@@ -47,9 +66,10 @@ struct TestDataResult {
 #[derive(Debug)]
 struct TestDataResultItem {
 	pub success: bool,
-
-	#[allow(dead_code)]
 	pub name: String,
+	pub valid_file: String,
+	pub expect: Vec<String>,
+	pub actual: Vec<String>,
 }
 
 impl TestDataResult {
@@ -78,18 +98,19 @@ where
 		let input = super::text::lines(input);
 
 		let mut test_succeeded = true;
-		let output = test_callback(input);
-		let output = output.join("\n");
+		let output_lines = test_callback(input);
+		let output = output_lines.join("\n");
 
 		let mut output_path = input_path.clone();
 		output_path.set_extension(TEST_OUTPUT_FILE_EXTENSION);
-		match std::fs::read_to_string(&output_path) {
+		let expected_output = match std::fs::read_to_string(&output_path) {
 			Ok(expected_output) => {
-				let expected_output = super::text::lines(expected_output);
-				let expected_output = expected_output.join("\n");
+				let expected_lines = super::text::lines(expected_output);
+				let expected_output = expected_lines.join("\n");
 				if output != expected_output {
 					test_succeeded = false;
 				}
+				expected_lines
 			}
 			Err(err) => {
 				test_succeeded = false;
@@ -102,12 +123,16 @@ where
 				} else {
 					panic!("failed to read output file for {}: {}", test_name, err);
 				}
+				Vec::new()
 			}
-		}
+		};
 
 		test_results.push(TestDataResultItem {
 			success: test_succeeded,
 			name: test_name,
+			valid_file: output_path.file_name().unwrap().to_string_lossy().into(),
+			expect: expected_output,
+			actual: output_lines,
 		})
 	}
 

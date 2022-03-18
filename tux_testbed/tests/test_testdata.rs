@@ -54,7 +54,7 @@ mod testdata {
 	}
 
 	#[test]
-	fn should_output_failed_tests_in_summary() {
+	fn should_output_failed_tests_in_output() {
 		let dir = temp_dir();
 		dir.create_file("pass.input", "");
 		dir.create_file("fail.input", "");
@@ -73,5 +73,68 @@ mod testdata {
 			.collect::<Vec<String>>();
 		assert!(output.len() == 1);
 		assert!(output[0].contains("fail.input"));
+	}
+
+	#[test]
+	fn should_output_failed_tests_in_summary() {
+		let dir = temp_dir();
+		dir.create_file("pass.input", "");
+		dir.create_file("fail.input", "");
+
+		dir.create_file("pass.valid", "");
+		dir.create_file("fail.valid", "this will fail");
+
+		let output = get_bin("bin_testdata")
+			.args(&["empty", dir.path_str()])
+			.output()
+			.unwrap();
+		let stderr = String::from_utf8_lossy(&output.stderr);
+		let output = stderr
+			.lines()
+			.filter(|x| x.contains("Failed") || (x.starts_with("-") && x.contains(".input")))
+			.collect::<Vec<_>>();
+		assert_eq!(
+			output,
+			vec!["===== Failed tests =====", "- fail.input"],
+			"expected failed test summary in stderr, but it was:\n\n----\n{}\n----\n",
+			stderr
+		);
+	}
+
+	#[test]
+	fn should_output_diff_for_failed_test() {
+		let test_result = get_bin("bin_testdata")
+			.args(&["id", "tests/testdata/failed_diff"])
+			.output()
+			.unwrap();
+
+		let stderr = String::from_utf8_lossy(&test_result.stderr);
+		let diff_lines = stderr
+			.lines()
+			.filter(|x| x.contains("test line") || x.contains("output did not match"))
+			.collect::<Vec<_>>();
+		assert_eq!(
+			diff_lines,
+			vec![
+				"=> `test1.input` output did not match `test1.valid`:",
+				"-test line A",
+				"+test line 1",
+				" test line 2",
+				" test line 3",
+				"-test line B",
+				"+test line 4",
+				"+test line 5",
+				" test line 6",
+				"+test line 7",
+				" test line 8",
+				" test line 9",
+				"-test line C",
+				"=> `test2.input` output did not match `test2.valid`:",
+				"-test line A",
+				"+test line B",
+			],
+			"expected failed test to output diff, but it was:\n\n----\n{}\n----\n",
+			stderr,
+		);
 	}
 }
