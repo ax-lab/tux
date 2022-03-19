@@ -198,7 +198,8 @@ where
 
 #[cfg(test)]
 mod test_lines {
-	use super::*;
+	use super::lines;
+	use super::Diff;
 	use crate::text;
 
 	#[test]

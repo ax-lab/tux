@@ -92,7 +92,7 @@ where
 
 #[cfg(test)]
 mod test_lcs {
-	use super::*;
+	use super::lcs;
 
 	#[test]
 	fn of_empty() {
