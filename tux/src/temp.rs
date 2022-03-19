@@ -52,10 +52,8 @@ impl TestTempDir {
 	/// To get the entire process output, including the exit code and error
 	/// output, use `get_bin_output` instead.
 	pub fn run_bin(&self, cmd: &str, args: &[&str]) -> String {
-		let mut cmd = super::get_bin(cmd);
-		cmd.args(args);
-		cmd.current_dir(self.path());
-		super::get_command_output(&mut cmd)
+		let output = self.get_bin_output(cmd, args);
+		super::get_process_output(output)
 	}
 
 	/// Similar to `run_bin` but returns the actual process output, instead of
@@ -64,7 +62,7 @@ impl TestTempDir {
 		let mut cmd = super::get_bin(cmd);
 		cmd.args(args);
 		cmd.current_dir(self.path());
-		cmd.output().unwrap()
+		cmd.output().expect("executing binary")
 	}
 }
 

@@ -32,18 +32,18 @@ pub fn get_bin(name: &str) -> Command {
 pub fn run_bin(cmd: &str, args: &[&str]) -> String {
 	let mut cmd = get_bin(cmd);
 	cmd.args(args);
-	get_command_output(&mut cmd)
+
+	let output = cmd.output().expect("running binary");
+	get_process_output(output)
 }
 
-/// Wrapper for running a `Command` and retrieving the output, while validating
-/// the exit code and stderr output.
+/// Utility function to retrieve the standard output of a process from
+/// the [`std::process::Output`] as a string, while validating the exit
+/// code and stderr output.
 ///
-/// This will call `Command::output` and panic if the exit status is non-zero
-/// or if any error output is generated.
-///
-/// Returns the command stdout as a UTF-8 string.
-pub fn get_command_output(cmd: &mut Command) -> String {
-	let output = cmd.output().expect("executing executable");
+/// This will panic if the process exit status is non-zero or if any
+/// error output is generated.
+pub fn get_process_output(output: std::process::Output) -> String {
 	let stderr = String::from_utf8_lossy(&output.stderr);
 	if !output.status.success() {
 		panic!(
