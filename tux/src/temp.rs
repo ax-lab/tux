@@ -48,11 +48,23 @@ impl TestTempDir {
 
 	/// Equivalent to [`super::run_bin`] but runs the binary with the temporary
 	/// directory as current working directory.
+	///
+	/// To get the entire process output, including the exit code and error
+	/// output, use `get_bin_output` instead.
 	pub fn run_bin(&self, cmd: &str, args: &[&str]) -> String {
 		let mut cmd = super::get_bin(cmd);
 		cmd.args(args);
 		cmd.current_dir(self.path());
 		super::get_command_output(&mut cmd)
+	}
+
+	/// Similar to `run_bin` but returns the actual process output, instead of
+	/// just the stdout text.
+	pub fn get_bin_output(&self, cmd: &str, args: &[&str]) -> std::process::Output {
+		let mut cmd = super::get_bin(cmd);
+		cmd.args(args);
+		cmd.current_dir(self.path());
+		cmd.output().unwrap()
 	}
 }
 
