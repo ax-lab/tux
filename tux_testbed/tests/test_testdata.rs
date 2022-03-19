@@ -15,9 +15,20 @@ mod testdata {
 	}
 
 	#[test]
-	#[should_panic = "tests failed"]
+	#[should_panic = "test case failed"]
 	fn failed_case_panics() {
 		testdata("tests/testdata/failed", |input| input);
+	}
+
+	#[test]
+	#[should_panic = "2 test cases failed"]
+	fn failed_case_should_panic_with_failed_count() {
+		let dir = temp_dir();
+		dir.create_file("a.input", "");
+		dir.create_file("b.input", "");
+		dir.create_file("a.valid", "fail");
+		dir.create_file("b.valid", "fail");
+		testdata(dir.path(), |input| input);
 	}
 
 	#[test]
@@ -136,5 +147,38 @@ mod testdata {
 			"expected failed test to output diff, but it was:\n\n----\n{}\n----\n",
 			stderr,
 		);
+	}
+
+	#[test]
+	fn missing_valid_file_should_not_output_diff_and_create_file_instead_but_still_fail() {
+		let dir = temp_dir();
+		dir.create_file("a.input", "input line 1\ninput line 2");
+		dir.create_file("b.input", "input line A\ninput line B");
+
+		let output = dir.get_bin_output("bin_testdata", &["id", "."]);
+
+		let exit_status_is_non_zero = !output.status.success();
+		assert!(exit_status_is_non_zero);
+
+		let mut valid_file_a = dir.path().to_path_buf();
+		valid_file_a.push("a.valid.new");
+		assert!(valid_file_a.is_file());
+
+		let mut valid_file_b = valid_file_a;
+		valid_file_b.set_file_name("b.valid.new");
+		assert!(valid_file_b.is_file());
+
+		let stderr = String::from_utf8_lossy(&output.stderr);
+		assert!(
+			!stderr.contains("input line"),
+			"stderr should not contain a diff:\n\n-----\n{}\n-----",
+			stderr
+		);
+
+		assert!(stderr.contains("`a.valid` for test `a.input` not found"));
+		assert!(stderr.contains("`b.valid` for test `b.input` not found"));
+
+		assert!(stderr.contains("created `a.valid.new` with the current test output"));
+		assert!(stderr.contains("created `b.valid.new`"));
 	}
 }
