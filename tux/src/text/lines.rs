@@ -1,9 +1,7 @@
-//! Text utilities for tests.
-
-/// Splits the input into lines while trimming extraneous white-space.
+/// Splits the input string into lines, removing leading and trailing blank
+/// lines, and trimming space from the end of lines.
 ///
-/// This will trim spaces from the end of lines, and remove leading and
-/// trailing empty lines.
+/// See also [`trim_lines`].
 pub fn lines<S: AsRef<str>>(input: S) -> Vec<String> {
 	let input = input.as_ref().trim_end();
 	let output = LinesIterator {
@@ -13,10 +11,11 @@ pub fn lines<S: AsRef<str>>(input: S) -> Vec<String> {
 	trim_lines(output).collect()
 }
 
-/// Removes extraneous white-space from a sequence of lines.
+/// Removes extra space from a sequence of lines received as an iterator of
+/// strings.
 ///
-/// This will trim spaces from the end of lines, and remove leading and
-/// trailing empty lines.
+/// This will remove leading and trailing blank lines, and trim space from
+/// the end of lines.
 pub fn trim_lines<'a, I>(input: I) -> impl Iterator<Item = String>
 where
 	I: IntoIterator,
@@ -29,6 +28,8 @@ where
 	TrimEndIterator::wrap(output)
 }
 
+/// Iterate over each line in the input text. This differs from Rust library
+/// implementation in which it handles `\r` as well.
 struct LinesIterator<'a> {
 	input_text: &'a str,
 	cursor_pos: usize,
@@ -42,19 +43,22 @@ impl<'a> Iterator for LinesIterator<'a> {
 		if remaining_input.len() == 0 {
 			None
 		} else if let Some(next_line_break_offset) = remaining_input.find(&['\n', '\r']) {
-			let bytes = remaining_input.as_bytes();
-			let output = &remaining_input[..next_line_break_offset];
-			let is_carriage_return = bytes[next_line_break_offset] == '\r' as u8;
+			let remaining_as_bytes = remaining_input.as_bytes();
+			let current_line = &remaining_input[..next_line_break_offset];
+
+			let last_character_index = remaining_as_bytes.len() - 1;
+			let is_carriage_return = remaining_as_bytes[next_line_break_offset] == '\r' as u8;
 			let is_crlf_sequence = is_carriage_return
-				&& next_line_break_offset < bytes.len() - 1
-				&& bytes[next_line_break_offset + 1] == '\n' as u8;
+				&& next_line_break_offset < last_character_index
+				&& remaining_as_bytes[next_line_break_offset + 1] == '\n' as u8;
+
 			let next_cursor_offset = if is_crlf_sequence {
 				next_line_break_offset + 2
 			} else {
 				next_line_break_offset + 1
 			};
 			self.cursor_pos += next_cursor_offset;
-			Some(output)
+			Some(current_line)
 		} else {
 			self.cursor_pos += remaining_input.len();
 			Some(remaining_input)
@@ -62,18 +66,25 @@ impl<'a> Iterator for LinesIterator<'a> {
 	}
 }
 
+/// An iterator over a sequence of strings that skips empty strings from the
+/// end of the iteration.
+///
+/// Note that this only works on completely empty strings (not blank strings
+/// with spaces). Since we are used by [`lines`] and [`trim_lines`], the
+/// assumption is that we will receive the lines already trimmed, so they
+/// will always be empty.
 struct TrimEndIterator<T: Iterator<Item = String>> {
 	inner: T,
-	current_run_of_empty_strings: usize,
-	non_empty_string_after_run: Option<String>,
+	empty_string_run_count: usize,
+	next_non_empty_string: Option<String>,
 }
 
 impl<T: Iterator<Item = String>> TrimEndIterator<T> {
 	pub fn wrap(inner: T) -> Self {
 		TrimEndIterator {
 			inner,
-			current_run_of_empty_strings: 0,
-			non_empty_string_after_run: None,
+			empty_string_run_count: 0,
+			next_non_empty_string: None,
 		}
 	}
 }
@@ -83,19 +94,24 @@ impl<T: Iterator<Item = String>> Iterator for TrimEndIterator<T> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
-			if self.non_empty_string_after_run.is_some() {
-				if self.current_run_of_empty_strings > 0 {
-					self.current_run_of_empty_strings -= 1;
+			if self.next_non_empty_string.is_some() {
+				// we want to remove only trailing empty strings, so we keep
+				// runs of empty strings in the middle intact
+				if self.empty_string_run_count > 0 {
+					self.empty_string_run_count -= 1;
 					return Some(String::new());
 				}
-				return std::mem::take(&mut self.non_empty_string_after_run);
+				return std::mem::take(&mut self.next_non_empty_string);
 			}
 
 			if let Some(next) = self.inner.next() {
 				if next.len() > 0 {
-					self.non_empty_string_after_run = Some(next);
+					// we can't return this directly because there may have
+					// been a run of empty strings before it that we need to
+					// return
+					self.next_non_empty_string = Some(next);
 				} else {
-					self.current_run_of_empty_strings += 1;
+					self.empty_string_run_count += 1;
 				}
 			} else {
 				return None;
@@ -105,88 +121,93 @@ impl<T: Iterator<Item = String>> Iterator for TrimEndIterator<T> {
 }
 
 #[cfg(test)]
-mod tests {
-	use super::*;
+mod test_lines {
+	use super::lines;
 
 	#[test]
-	fn lines_returns_single_line_for_no_line_break() {
+	fn returns_single_line_for_no_line_break() {
 		let out = lines("single line");
 		assert_eq!(out, vec!["single line"]);
 	}
 
 	#[test]
-	fn lines_supports_multiple_line_break_sequences() {
+	fn supports_multiple_line_break_sequences() {
 		let out = lines("line 1\nline 2\r\nline 3\rline 4");
 		assert_eq!(out, vec!["line 1", "line 2", "line 3", "line 4"]);
 	}
 
 	#[test]
-	fn lines_returns_empty_for_empty_string() {
+	fn returns_empty_for_empty_string() {
 		let out = lines("");
 		assert!(out.len() == 0);
 	}
 
 	#[test]
-	fn lines_skips_leading_empty_lines() {
+	fn skips_leading_empty_lines() {
 		let out = lines("\n\n  \r\n\t\rfirst non-empty\nsecond");
 		assert_eq!(out, vec!["first non-empty", "second"]);
 	}
 
 	#[test]
-	fn lines_removes_trailing_empty_lines() {
+	fn removes_trailing_empty_lines() {
 		let out = lines("first\nlast non-empty\n\n  \r\n\t\r\n");
 		assert_eq!(out, vec!["first", "last non-empty"]);
 	}
 
 	#[test]
-	fn lines_trim_line_ends() {
+	fn trim_line_ends() {
 		let out = lines("l1  \nl2\t\r\nl3\t \rl4  ");
 		assert_eq!(out, vec!["l1", "l2", "l3", "l4"]);
 	}
 
 	#[test]
-	fn lines_does_not_strip_lead_indentation() {
+	fn does_not_strip_lead_indentation() {
 		let out = lines("\n 1\n  2\n   3");
 		assert_eq!(out, vec![" 1", "  2", "   3"]);
 	}
+}
+
+#[cfg(test)]
+mod test_trim_lines {
+	use super::trim_lines;
 
 	#[test]
-	fn trim_lines_returns_non_empty_lines() {
+	fn returns_non_empty_lines() {
 		let input = vec!["1", "2", "3"];
 		let out = trim_lines(input.iter()).collect::<Vec<_>>();
 		assert_eq!(out, vec!["1", "2", "3"]);
 	}
 
 	#[test]
-	fn trim_lines_skips_leading_empty_lines() {
+	fn skips_leading_blank_lines() {
 		let input = vec!["", "  ", "\t", "first non-empty", "second"];
 		let out = trim_lines(input.iter()).collect::<Vec<_>>();
 		assert_eq!(out, vec!["first non-empty", "second"]);
 	}
 
 	#[test]
-	fn trim_lines_trim_line_ends() {
+	fn removes_trailing_space_from_lines() {
 		let input = vec!["l1  ", "l2\t", "l3\t ", "l4  "];
 		let out = trim_lines(input.iter()).collect::<Vec<_>>();
 		assert_eq!(out, vec!["l1", "l2", "l3", "l4"]);
 	}
 
 	#[test]
-	fn trim_lines_removes_trailing_empty_lines() {
+	fn removes_trailing_blank_lines() {
 		let input = vec!["first", "last non-empty", "", "  ", "\t"];
 		let out = trim_lines(input.iter()).collect::<Vec<_>>();
 		assert_eq!(out, vec!["first", "last non-empty"]);
 	}
 
 	#[test]
-	fn trim_lines_does_not_remove_empty_lines_from_the_middle() {
+	fn does_not_remove_blank_lines_from_the_middle() {
 		let input = vec!["1x", "", "2x", "", "", "3x", "", "", "", "!"];
 		let out = trim_lines(input.iter()).collect::<Vec<_>>();
 		assert_eq!(out, vec!["1x", "", "2x", "", "", "3x", "", "", "", "!"]);
 	}
 
 	#[test]
-	fn trim_lines_does_not_trim_lead_indentation() {
+	fn does_not_trim_lead_indentation() {
 		let input = vec![" 1", "  2", "   3"];
 		let out = trim_lines(input.iter()).collect::<Vec<_>>();
 		assert_eq!(out, vec![" 1", "  2", "   3"]);

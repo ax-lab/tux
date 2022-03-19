@@ -1,4 +1,5 @@
-/// Join lines from a string iterator into a single string.
+/// Utility method to join any string sequence into a single string separated
+/// by a line break.
 pub fn join_lines<T>(lines: T) -> String
 where
 	T: IntoIterator,
@@ -13,17 +14,17 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+mod test_join_lines {
 	use super::*;
 
 	#[test]
-	fn join_empty_slice_returns_empty() {
+	fn with_empty_sequence_returns_empty() {
 		let out = join_lines(Vec::<String>::new());
 		assert_eq!(out, "");
 	}
 
 	#[test]
-	fn join_returns_lines_joined_by_line_break() {
+	fn returns_lines_joined_by_line_break() {
 		let out = join_lines(["a", "b", "c"]);
 		assert_eq!(out, "a\nb\nc");
 	}
