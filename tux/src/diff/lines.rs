@@ -32,7 +32,7 @@ where
 	let full_source = source;
 	let full_result = result;
 
-	let common_prefix = {
+	let common_prefix_len = {
 		let mut len = 0;
 		while len < source.len() && len < result.len() && source[len] == result[len] {
 			len += 1;
@@ -40,11 +40,11 @@ where
 		len
 	};
 
-	let source = &source[common_prefix..];
-	let result = &result[common_prefix..];
+	let source = &source[common_prefix_len..];
+	let result = &result[common_prefix_len..];
 
-	let no_difference = source.len() == 0 && result.len() == 0;
-	if no_difference {
+	let both_are_equal = source.len() == 0 && result.len() == 0;
+	if both_are_equal {
 		return DiffResult {
 			items: Vec::new(),
 			source: full_source,
@@ -52,7 +52,7 @@ where
 		};
 	}
 
-	let common_suffix = {
+	let common_suffix_len = {
 		let from_last = |slice: &[T], offset| slice.len() - offset - 1;
 		let mut len = 0;
 		while len < source.len()
@@ -64,14 +64,14 @@ where
 		len
 	};
 
-	let source = &source[..source.len() - common_suffix];
-	let result = &result[..result.len() - common_suffix];
+	let source = &source[..source.len() - common_suffix_len];
+	let result = &result[..result.len() - common_suffix_len];
 
 	let common_subsequence = super::lcs(source, result);
 
 	let mut diff = Vec::new();
-	if common_prefix > 0 {
-		diff.push(Diff::Output(common_prefix));
+	if common_prefix_len > 0 {
+		diff.push(Diff::Output(common_prefix_len));
 	}
 
 	let mut cur_source = 0;
@@ -86,6 +86,7 @@ where
 			diff.push(Diff::Insert(line_result - cur_result));
 		}
 
+		// if we already have an output element, append to it
 		match diff.last_mut() {
 			Some(Diff::Output(count)) => {
 				*count += 1;
@@ -107,8 +108,8 @@ where
 		diff.push(Diff::Insert(result.len() - cur_result));
 	}
 
-	if common_suffix > 0 {
-		diff.push(Diff::Output(common_suffix));
+	if common_suffix_len > 0 {
+		diff.push(Diff::Output(common_suffix_len));
 	}
 
 	DiffResult {
@@ -118,11 +119,11 @@ where
 	}
 }
 
-/// Result of a diff between a `source` and `result` list, consisting of a
-/// sequence of [`Diff`] items.
+/// Result of a diff operation.
 ///
-/// The result also keeps a reference to both lists and can generate a text
-/// representation of the diff.
+/// This packages a list of [`Diff`] elements with the `source` and `result`
+/// lists that the diff was computed from, and with it can also generate a
+/// string representation of the diff.
 pub struct DiffResult<'a, T> {
 	items: Vec<Diff>,
 	source: &'a [T],
@@ -157,33 +158,33 @@ where
 			}
 		};
 
-		let mut offset_source = 0;
-		let mut offset_result = 0;
+		let mut cur_offset_source = 0;
+		let mut cur_offset_result = 0;
 		for item in &self.items {
 			match item {
 				Diff::Output(count) => {
-					let sta = offset_source;
+					let sta = cur_offset_source;
 					let end = sta + count;
-					offset_source += count;
-					offset_result += count;
+					cur_offset_source += count;
+					cur_offset_result += count;
 					for x in sta..end {
 						start_new_line(f)?;
 						write!(f, " {}", source[x])?;
 					}
 				}
 				Diff::Insert(count) => {
-					let sta = offset_result;
+					let sta = cur_offset_result;
 					let end = sta + count;
-					offset_result += count;
+					cur_offset_result += count;
 					for x in sta..end {
 						start_new_line(f)?;
 						write!(f, "+{}", result[x])?;
 					}
 				}
 				Diff::Delete(count) => {
-					let sta = offset_source;
+					let sta = cur_offset_source;
 					let end = sta + count;
-					offset_source += count;
+					cur_offset_source += count;
 					for x in sta..end {
 						start_new_line(f)?;
 						write!(f, "-{}", source[x])?;
@@ -196,12 +197,12 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+mod test_lines {
 	use super::*;
 	use crate::text;
 
 	#[test]
-	fn diff_lines_empty() {
+	fn both_empty() {
 		let a: Vec<String> = Vec::new();
 		let b: Vec<String> = Vec::new();
 		let diff = lines(&a, &b);
@@ -209,7 +210,7 @@ mod tests {
 	}
 
 	#[test]
-	fn diff_lines_equal() {
+	fn both_equal() {
 		let a = vec!["line 1", "line 2"];
 		let b = vec!["line 1", "line 2"];
 		let diff = lines(&a, &b);
@@ -217,26 +218,26 @@ mod tests {
 	}
 
 	#[test]
-	fn diff_lines_empty_result() {
+	fn empty_result() {
 		let a = vec!["line 1", "line 2"];
 		let b = Vec::new();
-		let diff = helper::diff_to_text(a, b);
+		let diff = helper::get_diff_text(a, b);
 		assert_eq!(diff, text::join_lines(["-line 1", "-line 2"]));
 	}
 
 	#[test]
-	fn diff_lines_empty_source() {
+	fn empty_source() {
 		let a = Vec::new();
 		let b = vec!["line 1", "line 2"];
-		let diff = helper::diff_to_text(a, b);
+		let diff = helper::get_diff_text(a, b);
 		assert_eq!(diff, text::join_lines(["+line 1", "+line 2"]));
 	}
 
 	#[test]
-	fn diff_lines_nothing_in_common() {
+	fn nothing_in_common() {
 		let a = vec!["line 1", "line 2"];
 		let b = vec!["line A", "line B"];
-		let diff = helper::diff_to_text(a, b);
+		let diff = helper::get_diff_text(a, b);
 		assert_eq!(
 			diff,
 			text::join_lines(["-line 1", "-line 2", "+line A", "+line B"])
@@ -244,10 +245,10 @@ mod tests {
 	}
 
 	#[test]
-	fn diff_lines_removed_suffix() {
+	fn removed_suffix() {
 		let a = vec!["same 1", "same 2", "suffix 1", "suffix 2"];
 		let b = vec!["same 1", "same 2"];
-		let diff = helper::diff_to_text(a, b);
+		let diff = helper::get_diff_text(a, b);
 		assert_eq!(
 			diff,
 			text::join_lines([" same 1", " same 2", "-suffix 1", "-suffix 2"])
@@ -255,10 +256,10 @@ mod tests {
 	}
 
 	#[test]
-	fn diff_lines_added_suffix() {
+	fn added_suffix() {
 		let a = vec!["same 1", "same 2"];
 		let b = vec!["same 1", "same 2", "suffix 1", "suffix 2"];
-		let diff = helper::diff_to_text(a, b);
+		let diff = helper::get_diff_text(a, b);
 		assert_eq!(
 			diff,
 			text::join_lines([" same 1", " same 2", "+suffix 1", "+suffix 2"])
@@ -266,10 +267,10 @@ mod tests {
 	}
 
 	#[test]
-	fn diff_lines_removed_prefix() {
+	fn removed_prefix() {
 		let a = vec!["prefix 1", "prefix 2", "same 1", "same 2"];
 		let b = vec!["same 1", "same 2"];
-		let diff = helper::diff_to_text(a, b);
+		let diff = helper::get_diff_text(a, b);
 		assert_eq!(
 			diff,
 			text::join_lines(["-prefix 1", "-prefix 2", " same 1", " same 2"])
@@ -277,10 +278,10 @@ mod tests {
 	}
 
 	#[test]
-	fn diff_lines_added_prefix() {
+	fn added_prefix() {
 		let a = vec!["same 1", "same 2"];
 		let b = vec!["prefix 1", "prefix 2", "same 1", "same 2"];
-		let diff = helper::diff_to_text(a, b);
+		let diff = helper::get_diff_text(a, b);
 		assert_eq!(
 			diff,
 			text::join_lines(["+prefix 1", "+prefix 2", " same 1", " same 2"])
@@ -288,12 +289,12 @@ mod tests {
 	}
 
 	#[test]
-	fn diff_lines_removed_prefix_and_suffix() {
+	fn removed_prefix_and_suffix() {
 		let a = vec![
 			"prefix 1", "prefix 2", "same 1", "same 2", "suffix 1", "suffix 2",
 		];
 		let b = vec!["same 1", "same 2"];
-		let diff = helper::diff_to_text(a, b);
+		let diff = helper::get_diff_text(a, b);
 		assert_eq!(
 			diff,
 			text::join_lines([
@@ -308,12 +309,12 @@ mod tests {
 	}
 
 	#[test]
-	fn diff_lines_added_prefix_and_suffix() {
+	fn added_prefix_and_suffix() {
 		let a = vec!["same 1", "same 2"];
 		let b = vec![
 			"prefix 1", "prefix 2", "same 1", "same 2", "suffix 1", "suffix 2",
 		];
-		let diff = helper::diff_to_text(a, b);
+		let diff = helper::get_diff_text(a, b);
 		assert_eq!(
 			diff,
 			text::join_lines([
@@ -328,10 +329,10 @@ mod tests {
 	}
 
 	#[test]
-	fn diff_lines_added_with_two_common_lines() {
+	fn added_with_two_common_lines() {
 		let a = vec!["same 1", "same 2"];
 		let b = vec!["prefix", "same 1", "between", "same 2", "suffix"];
-		let diff = helper::diff_to_text(a, b);
+		let diff = helper::get_diff_text(a, b);
 		assert_eq!(
 			diff,
 			text::join_lines(["+prefix", " same 1", "+between", " same 2", "+suffix"])
@@ -339,10 +340,10 @@ mod tests {
 	}
 
 	#[test]
-	fn diff_lines_removed_with_two_common_lines() {
+	fn removed_with_two_common_lines() {
 		let a = vec!["prefix", "same 1", "between", "same 2", "suffix"];
 		let b = vec!["same 1", "same 2"];
-		let diff = helper::diff_to_text(a, b);
+		let diff = helper::get_diff_text(a, b);
 		assert_eq!(
 			diff,
 			text::join_lines(["-prefix", " same 1", "-between", " same 2", "-suffix"])
@@ -350,10 +351,10 @@ mod tests {
 	}
 
 	#[test]
-	fn diff_lines_with_different_contents_with_two_common_lines() {
+	fn with_different_contents_and_two_common_lines() {
 		let a = vec!["prefix A", "same 1", "between A", "same 2", "suffix A"];
 		let b = vec!["prefix B", "same 1", "between B", "same 2", "suffix B"];
-		let diff = helper::diff_to_text(a, b);
+		let diff = helper::get_diff_text(a, b);
 		assert_eq!(
 			diff,
 			text::join_lines([
@@ -370,10 +371,10 @@ mod tests {
 	}
 
 	#[test]
-	fn diff_lines_with_non_trivial_common_sequence() {
+	fn with_non_trivial_common_sequence() {
 		let a = vec!["a1", "sX", "a2", "sW", "sX", "a3", "sY", "a4", "sZ"];
 		let b = vec!["b1", "b2", "sW", "sX", "b3", "sY", "b4", "sZ"];
-		let diff = helper::diff_to_text(a, b);
+		let diff = helper::get_diff_text(a, b);
 		assert_eq!(
 			diff,
 			text::join_lines([
@@ -386,15 +387,15 @@ mod tests {
 	mod helper {
 		use super::*;
 
-		pub fn diff_to_text(a: Vec<&str>, b: Vec<&str>) -> String {
+		pub fn get_diff_text(a: Vec<&str>, b: Vec<&str>) -> String {
 			let diff = lines(&a, &b);
 			sanity_check_diff(&diff.items());
 			diff.to_string()
 		}
 
 		fn sanity_check_diff(diff: &Vec<Diff>) {
-			check_diff_does_not_have_contiguous_output_ranges(diff);
 			check_diff_does_not_have_empty_entries(diff);
+			check_diff_does_not_have_contiguous_output_ranges(diff);
 		}
 
 		fn check_diff_does_not_have_empty_entries(diff: &Vec<Diff>) {
