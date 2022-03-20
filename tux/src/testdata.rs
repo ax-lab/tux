@@ -4,32 +4,57 @@ use std::{
 	path::{Path, PathBuf},
 };
 
+// Changing any of these extensions requires changing all unit and integration
+// tests that use this feature, and the `testdata` tests themselves.
 const TEST_INPUT_FILE_EXTENSION: &'static str = "input";
 const TEST_VALID_FILE_EXTENSION: &'static str = "valid";
 const TEST_NEW_VALID_FILE_EXTENSION: &'static str = "valid.new";
 
-/// Test all input files in the given directory (recursively) using the
-/// provided callback and comparing the expected output.
+/// Test all `.input` files in the given directory (recursively) using the
+/// callback and compare the result with the expected output provided by a
+/// `.valid` file alongside the input.
 ///
-/// ## Test files
+/// # Test procedure
 ///
-/// Any files with the `.input` extension will be loaded and the lines passed
-/// to the test callback. The callback result is then compared to the expected
-/// output.
+/// All `.input` files in the provided directory will be read as text, split
+/// into lines, and passed to the provided callback.
 ///
-/// The expected output for the test callback must be provided in a `.valid`
-/// file with the same name as the `.input`.
+/// The callback returns a list of output lines that is then compared to the
+/// lines loaded from a `.valid` file with the same name as the input.
 ///
-/// ## Test condition
+/// The test will fail if the callback output does not match the lines in the
+/// `.valid` file. In this case, the function will output the differences
+/// (see below).
 ///
-/// The test will fail if the callback output does not match the `.valid.`
-/// file. In that case, the test will output a diff between the actual
-/// and the expected output.
+/// After running the callback for all inputs, if there was any failed test
+/// the function will panic.
+///
+/// ## Input lines
+///
+/// For convenience, both the `.input` and `.valid` files are read into lines
+/// by using the [text::lines()](fn@super::text::lines) function, which
+/// provides some whitespace filtering and normalization.
+///
+/// The use of lines is more convenient for most test cases and the filtering
+/// avoids errors by differences in whitespace.
+///
+/// ## Failure output
+///
+/// After testing all `.input` files, the function will output a summary of
+/// the tests. For failed tests, [diff::lines](fn@super::diff::lines) will
+/// be used to provide the difference between the actual lines (`source`) and
+/// the expected lines from the `.valid` file (`result`).
 ///
 /// ## Generating valid files
 ///
-/// As a convenience feature, if a `.valid` file is not found, the test will
-/// fail but will create a `.valid.new` file with the actual output.
+/// As a convenience feature, if a `.valid` file is not found alongside the
+/// input, the test will fail but will also create a `.valid.new` file with
+/// the actual output.
+///
+/// This feature can be used to easily generate `.valid` files by creating
+/// the `.input` file, running the tests, and then removing the `.new` from
+/// the created file after manually inspecting it to make sure it is the
+/// expected behavior.
 pub fn testdata<P, F>(path: P, callback: F)
 where
 	P: AsRef<Path>,
@@ -86,19 +111,20 @@ where
 	}
 }
 
+/// Groups the result of a [`testdata_to_result`] run.
 #[derive(Debug)]
 struct TestDataResult {
 	pub tests: Vec<TestDataResultItem>,
 }
 
-/// Contains information about a single test run (equivalent to a single input
-/// file).
+/// Contains information about a single test case, that is, the result of
+/// running the test callback for a single `.input` file.
 #[derive(Debug)]
 struct TestDataResultItem {
-	/// Returns if the test was successful.
+	/// Returns if this test case was successful.
 	pub success: bool,
 
-	/// The test name. This is the input file name, without path.
+	/// The test case name. This is the input file name, without path.
 	pub name: String,
 
 	/// Name for the valid file containing the expected test output.
@@ -113,6 +139,7 @@ struct TestDataResultItem {
 }
 
 impl TestDataResult {
+	/// Returns `true` if and only if all tests succeeded.
 	pub fn success(&self) -> bool {
 		for it in self.tests.iter() {
 			if !it.success {
@@ -225,21 +252,13 @@ fn collect_test_inputs_with_name(root_path: &Path) -> Vec<(PathBuf, String)> {
 	test_inputs_with_name
 }
 
-//============================================================================//
-// Unit tests
-//============================================================================//
-
 #[cfg(test)]
-mod tests {
-	use super::*;
+mod test_testdata {
+	use super::{testdata, testdata_to_result};
 	use crate::{temp_dir, TempDir};
 
-	//------------------------------------------------------------------------//
-	// Basic tests
-	//------------------------------------------------------------------------//
-
 	#[test]
-	fn testdata_runs_test_callback() {
+	fn runs_test_callback() {
 		let dir = temp_dir();
 		dir.create_file("some.input", "");
 		dir.create_file("some.valid", "");
@@ -254,7 +273,7 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_runs_test_callback_with_input() {
+	fn runs_test_callback_with_input() {
 		let dir = temp_dir();
 		dir.create_file("some.input", "the input");
 		dir.create_file("some.valid", "");
@@ -270,7 +289,7 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_fails_if_output_is_missing() {
+	fn fails_if_output_is_missing() {
 		let dir = temp_dir();
 		dir.create_file("test.input", "some input");
 
@@ -279,7 +298,7 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_fails_if_output_is_different() {
+	fn fails_if_output_is_different() {
 		let dir = temp_dir();
 		helper::write_case(&dir, "test.input", "some input", "some output");
 
@@ -288,7 +307,7 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_runs_test_callback_for_each_input() {
+	fn runs_test_callback_for_each_input() {
 		let dir = temp_dir();
 		helper::write_case(&dir, "a.input", "input A", "");
 		helper::write_case(&dir, "b.input", "input B", "");
@@ -310,7 +329,7 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_recurses_into_subdirectories() {
+	fn recurses_into_subdirectories() {
 		let dir = temp_dir();
 		helper::write_case(&dir, "a1.input", "a1", "");
 		helper::write_case(&dir, "a2.input", "a2", "");
@@ -342,7 +361,7 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_fails_and_generate_an_output_file_if_one_does_not_exist() {
+	fn fails_and_generate_an_output_file_if_one_does_not_exist() {
 		let dir = temp_dir();
 		dir.create_file("test.input", "Some Input");
 
@@ -358,12 +377,8 @@ mod tests {
 		assert_eq!(new_result_text, "some input");
 	}
 
-	//------------------------------------------------------------------------//
-	// Input & output trimming
-	//------------------------------------------------------------------------//
-
 	#[test]
-	fn testdata_trims_input_files() {
+	fn trims_input_files() {
 		let dir = temp_dir();
 		helper::write_case(&dir, "test.input", "\n\nfirst\ntrim end:  \nlast\n\n", "");
 
@@ -377,7 +392,7 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_trims_expected_output_files() {
+	fn trims_expected_output_files() {
 		let dir = temp_dir();
 		helper::write_case(
 			&dir,
@@ -389,7 +404,7 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_ignores_line_break_differences_in_input_and_output() {
+	fn ignores_line_break_differences_in_input_and_output() {
 		let dir = temp_dir();
 		helper::write_case(&dir, "a.input", "a\nb\nc", "c\r\nb\r\na");
 		helper::write_case(&dir, "b.input", "a\r\nb\r\nc", "c\nb\na");
@@ -401,7 +416,7 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_does_not_ignore_trailing_indentation_of_first_line() {
+	fn does_not_ignore_trailing_indentation_of_first_line() {
 		let dir = temp_dir();
 		helper::write_case(&dir, "test.input", "value", "  value");
 		let res = testdata_to_result(dir.path(), |input| input);
@@ -413,7 +428,7 @@ mod tests {
 	//------------------------------------------------------------------------//
 
 	#[test]
-	fn testdata_to_result_returns_ok_for_valid_case() {
+	fn to_result_returns_ok_for_valid_case() {
 		let dir = temp_dir();
 		helper::write_case(&dir, "test.input", "abc\n123", "123\nabc");
 
@@ -429,7 +444,7 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_to_result_returns_an_item_for_each_case() {
+	fn to_result_returns_an_item_for_each_case() {
 		let dir = temp_dir();
 		helper::write_case(&dir, "a.input", "A", "a");
 		helper::write_case(&dir, "b.input", "B", "b");
@@ -446,7 +461,7 @@ mod tests {
 	}
 
 	#[test]
-	fn testdata_to_result_fails_if_output_does_not_match() {
+	fn to_result_fails_if_output_does_not_match() {
 		let dir = temp_dir();
 		helper::write_case(&dir, "a.input", "Valid 1", "valid 1");
 		helper::write_case(&dir, "b.input", "Valid 2", "valid 2");
@@ -478,12 +493,9 @@ mod tests {
 		pub fn write_case(dir: &TempDir, input_file: &str, input: &str, expected: &str) {
 			dir.create_file(input_file, input);
 
-			let suffix = format!(".{}", TEST_INPUT_FILE_EXTENSION);
+			let suffix = format!(".input");
 			let basename = input_file.strip_suffix(&suffix).unwrap();
-			dir.create_file(
-				&format!("{}.{}", basename, TEST_VALID_FILE_EXTENSION),
-				expected,
-			);
+			dir.create_file(&format!("{}.valid", basename), expected);
 		}
 	}
 }

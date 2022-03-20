@@ -38,7 +38,7 @@ mod testdata {
 	}
 
 	#[test]
-	fn should_output_each_passed_test() {
+	fn outputs_each_passed_test() {
 		let dir = temp_dir();
 		dir.create_file("a.input", "");
 		dir.create_file("b.input", "");
@@ -65,7 +65,7 @@ mod testdata {
 	}
 
 	#[test]
-	fn should_output_failed_tests_in_output() {
+	fn outputs_failed_tests_in_output() {
 		let dir = temp_dir();
 		dir.create_file("pass.input", "");
 		dir.create_file("fail.input", "");
@@ -87,7 +87,7 @@ mod testdata {
 	}
 
 	#[test]
-	fn should_output_failed_tests_in_summary() {
+	fn outputs_failed_tests_in_summary() {
 		let dir = temp_dir();
 		dir.create_file("pass.input", "");
 		dir.create_file("fail.input", "");
@@ -113,7 +113,7 @@ mod testdata {
 	}
 
 	#[test]
-	fn should_output_diff_for_failed_test() {
+	fn outputs_diff_for_failed_test() {
 		let test_result = get_bin("bin_testdata")
 			.args(&["id", "tests/testdata/failed_diff"])
 			.output()
@@ -150,7 +150,7 @@ mod testdata {
 	}
 
 	#[test]
-	fn missing_valid_file_should_not_output_diff_and_create_file_instead_but_still_fail() {
+	fn does_not_output_diff_for_missing_valid_file_but_creates_new_file_and_then_fails() {
 		let dir = temp_dir();
 		dir.create_file("a.input", "input line 1\ninput line 2");
 		dir.create_file("b.input", "input line A\ninput line B");
