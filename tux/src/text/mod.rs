@@ -1,4 +1,4 @@
-//! Text utilities for tests.
+//! General text utilities for tests.
 
 mod join_lines;
 pub use join_lines::*;

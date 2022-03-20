@@ -1,21 +1,26 @@
-/// Splits the input string into lines, removing leading and trailing blank
-/// lines, and trimming space from the end of lines.
+/// Splits the input string into lines and cleans up excess whitespace
+/// using [`trim_lines`].
 ///
-/// See also [`trim_lines`].
+/// The supported line separators are `"\n"`, `"\r"`, and `"\r\n"`.
 pub fn lines<S: AsRef<str>>(input: S) -> Vec<String> {
-	let input = input.as_ref().trim_end();
+	let input = input.as_ref();
+
+	// we can't simply use the default `lines()` here because of the `\r`
 	let output = LinesIterator {
 		input_text: input,
 		cursor_pos: 0,
 	};
+
 	trim_lines(output).collect()
 }
 
-/// Removes extra space from a sequence of lines received as an iterator of
-/// strings.
+/// Removes extra space from an input string sequence received as an iterator.
 ///
-/// This will remove leading and trailing blank lines, and trim space from
-/// the end of lines.
+/// This return an iterator wrapping the original input that will:
+///
+/// - Remove leading and trailing blank lines. A blank line is either an
+///   empty string or a string containing only spaces.
+/// - Trim the end of all lines.
 pub fn trim_lines<'a, I>(input: I) -> impl Iterator<Item = String>
 where
 	I: IntoIterator,
@@ -25,11 +30,14 @@ where
 		.into_iter()
 		.map(|x| x.as_ref().trim_end().to_string())
 		.skip_while(|x| x.len() == 0);
+
+	// note that this only handles empty strings, so we need to make sure
+	// lines are already trimmed before they go through this iterator
 	TrimEndIterator::wrap(output)
 }
 
 /// Iterate over each line in the input text. This differs from Rust library
-/// implementation in which it handles `\r` as well.
+/// implementation in which it considers a lone `\r` as a line break.
 struct LinesIterator<'a> {
 	input_text: &'a str,
 	cursor_pos: usize,
@@ -69,10 +77,11 @@ impl<'a> Iterator for LinesIterator<'a> {
 /// An iterator over a sequence of strings that skips empty strings from the
 /// end of the iteration.
 ///
-/// Note that this only works on completely empty strings (not blank strings
-/// with spaces). Since we are used by [`lines`] and [`trim_lines`], the
-/// assumption is that we will receive the lines already trimmed, so they
-/// will always be empty.
+/// # Implementation note
+///
+/// This is meant to be used by [`lines`] and [`trim_lines`]. Since those are
+/// expected to trim line ends, we only bother with empty strings in this
+/// implementation.
 struct TrimEndIterator<T: Iterator<Item = String>> {
 	inner: T,
 	empty_string_run_count: usize,

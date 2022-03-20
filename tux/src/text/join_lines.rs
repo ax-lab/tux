@@ -1,5 +1,4 @@
-/// Utility method to join any string sequence into a single string separated
-/// by a line break.
+/// Joins a sequence of strings into a single string separate by line breaks.
 pub fn join_lines<T>(lines: T) -> String
 where
 	T: IntoIterator,
@@ -15,7 +14,7 @@ where
 
 #[cfg(test)]
 mod test_join_lines {
-	use super::*;
+	use super::join_lines;
 
 	#[test]
 	fn with_empty_sequence_returns_empty() {
