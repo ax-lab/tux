@@ -76,7 +76,7 @@ impl TempDir {
 		// temporary directory
 		let path = path.clean();
 		if !path.starts_with(self.path()) {
-			panic!("cannot create test file outside root dir");
+			panic!("cannot create test file outside temp dir");
 		}
 
 		let parent = path.parent().expect("parent dir for new test file");
@@ -177,15 +177,13 @@ mod test_temp_dir {
 	}
 
 	#[test]
+	#[should_panic = "outside temp dir"]
 	fn does_not_create_file_outside_root_directory() {
 		let dir = TempDir::create_new();
-		let result = std::panic::catch_unwind(|| {
-			dir.create_file(
-				"sub/../../test_file.txt",
-				"this test file should not be created",
-			);
-		});
-		assert!(result.is_err());
+		dir.create_file(
+			"sub/../../test_file.txt",
+			"this test file should not be created",
+		);
 	}
 
 	#[test]
