@@ -112,15 +112,15 @@ mod test_temp_dir {
 	use super::TempDir;
 
 	#[test]
-	fn alias_returns_new_instance_with_temporary_dir_created() {
-		let dir = temp_dir();
+	fn create_new_creates_new_directory() {
+		let dir = TempDir::create_new();
 		let path = dir.path();
 		assert!(path.is_dir());
 	}
 
 	#[test]
-	fn create_new_creates_new_directory() {
-		let dir = TempDir::create_new();
+	fn alias_returns_new_instance_with_temporary_dir_created() {
+		let dir = temp_dir();
 		let path = dir.path();
 		assert!(path.is_dir());
 	}
@@ -138,6 +138,12 @@ mod test_temp_dir {
 		let dir = TempDir::create_new();
 		let path = dir.path();
 		assert!(path.is_absolute());
+	}
+
+	#[test]
+	fn path_str_returns_the_path() {
+		let dir = TempDir::create_new();
+		assert!(dir.path_str() == dir.path().to_string_lossy());
 	}
 
 	#[test]
@@ -184,11 +190,5 @@ mod test_temp_dir {
 			"sub/../../test_file.txt",
 			"this test file should not be created",
 		);
-	}
-
-	#[test]
-	fn path_str_returns_the_path() {
-		let dir = TempDir::create_new();
-		assert!(dir.path_str() == dir.path().to_string_lossy());
 	}
 }
