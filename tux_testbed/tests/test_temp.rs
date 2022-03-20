@@ -1,6 +1,6 @@
 use tux::*;
 
-mod test_temp_dir {
+mod temp_dir {
 	use super::TempDir;
 
 	#[test]
