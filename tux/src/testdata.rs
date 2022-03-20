@@ -232,7 +232,7 @@ fn collect_test_inputs_with_name(root_path: &Path) -> Vec<(PathBuf, String)> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{temp_dir, TestTempDir};
+	use crate::{temp_dir, TempDir};
 
 	//------------------------------------------------------------------------//
 	// Basic tests
@@ -475,7 +475,7 @@ mod tests {
 	mod helper {
 		use super::*;
 
-		pub fn write_case(dir: &TestTempDir, input_file: &str, input: &str, expected: &str) {
+		pub fn write_case(dir: &TempDir, input_file: &str, input: &str, expected: &str) {
 			dir.create_file(input_file, input);
 
 			let suffix = format!(".{}", TEST_INPUT_FILE_EXTENSION);
