@@ -2,10 +2,28 @@ use warp::{path::FullPath, Filter};
 
 pub use warp;
 
-/// Provides a very simple HTTP server that can be used to test HTTP requests.
+/// Provides a very simple HTTP server with [`warp`] that can be used to test
+/// requests.
 ///
-/// The server is bound to the localhost at a random port. The bound port can
-/// be retrieved using the `port` method.
+/// The server is bound to the `localhost` at a random port. The bound port
+/// can be retrieved using the [`TestServer::port`] method.
+///
+/// # Example
+///
+/// ```
+/// use tux::TestServer;
+///
+/// let server = TestServer::new_with_root_response("hello from server");
+/// println!("server is listening at port {}", server.port());
+///
+/// let addr = format!("http://localhost:{}", server.port());
+/// let resp = reqwest::blocking::get(addr).unwrap();
+/// let text = resp.text().unwrap();
+/// assert_eq!(text, "hello from server");
+///
+/// // dropping the value shuts down the server
+/// drop(server);
+/// ```
 pub struct TestServer {
 	listen_addr: std::net::SocketAddr,
 	inner_state: TestServerState,
@@ -40,15 +58,28 @@ impl std::ops::Drop for TestServer {
 }
 
 impl TestServer {
+	/// Returns the port number where the server is listening for incoming
+	/// connections.
 	pub fn port(&self) -> u16 {
 		self.listen_addr.port()
 	}
 
+	/// Creates a server with a root route that just responds with the given
+	/// text.
 	pub fn new_with_root_response(response: &'static str) -> Self {
 		let routes = warp::path::end().map(move || response);
 		Self::new_with_routes(routes)
 	}
 
+	/// Creates a server that will respond to any route and method with
+	/// information about the incoming request.
+	///
+	/// The response is plain text with lines in the format `key: value`.
+	///
+	/// The following keys are provided:
+	///
+	/// - `method`
+	/// - `path`
 	pub fn new_with_ping_route(route: &'static str) -> Self {
 		let routes = warp::path(route)
 			.and(warp::method().and(warp::path::full()))
@@ -62,6 +93,16 @@ impl TestServer {
 		Self::new_with_routes(routes)
 	}
 
+	/// Creates a new server with custom routes.
+	///
+	/// # Example
+	///
+	/// ```
+	/// # use tux::TestServer;
+	/// # use warp::Filter;
+	/// let routes = warp::path::end().map(|| "hello");
+	/// let server = TestServer::new_with_routes(routes);
+	/// ```
 	pub fn new_with_routes<F>(routes: F) -> TestServer
 	where
 		F: warp::Filter + Clone + Send + Sync + 'static,
@@ -96,20 +137,20 @@ impl TestServer {
 }
 
 #[cfg(test)]
-mod tests {
+mod test_server {
 	use super::*;
 
 	#[test]
-	fn test_server_should_accept_request() {
+	fn accept_incoming_request() {
 		const DATA: &str = "test data";
 		let server = TestServer::new_with_root_response(DATA);
 		let addr = format!("http://127.0.0.1:{}", server.port());
-		let output = get_request_output(addr);
+		let output = helper::get(addr);
 		assert_eq!(output, DATA);
 	}
 
 	#[test]
-	fn test_server_should_return_404_for_invalid_path() {
+	fn returns_404_for_invalid_path() {
 		let server = TestServer::new_with_root_response("");
 		let addr = format!("http://127.0.0.1:{}/invalid_path", server.port());
 		let response_status = reqwest::blocking::get(addr).unwrap().status().as_u16();
@@ -117,7 +158,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_server_should_shutdown_on_drop() {
+	fn shuts_down_on_drop() {
 		let server = TestServer::new_with_root_response("");
 		let addr = format!("http://127.0.0.1:{}", server.port());
 		drop(server);
@@ -130,17 +171,17 @@ mod tests {
 	}
 
 	#[test]
-	fn test_server_with_ping_route_returns_request_info() {
+	fn with_ping_route_returns_request_info() {
 		let server = TestServer::new_with_ping_route("ping");
 
 		let addr = format!("http://127.0.0.1:{}/ping/abc", server.port());
 		let addr = &addr;
-		let output = get_request_output(addr);
+		let output = helper::get(addr);
 		check_output_contains(&output, "method: GET");
 		check_output_contains(&output, "path: /ping/abc");
 
 		let addr = format!("http://127.0.0.1:{}/ping/123", server.port());
-		let output = get_post_request_output(addr);
+		let output = helper::post(addr);
 		check_output_contains(&output, "method: POST");
 		check_output_contains(&output, "path: /ping/123");
 
@@ -151,20 +192,22 @@ mod tests {
 		}
 	}
 
-	fn get_request_output<S: AsRef<str>>(addr: S) -> String {
-		let output = reqwest::blocking::get(addr.as_ref())
-			.unwrap()
-			.bytes()
-			.unwrap();
-		let output = String::from_utf8_lossy(&output);
-		output.to_string()
-	}
+	mod helper {
+		pub fn get<S: AsRef<str>>(addr: S) -> String {
+			let output = reqwest::blocking::get(addr.as_ref())
+				.unwrap()
+				.bytes()
+				.unwrap();
+			let output = String::from_utf8_lossy(&output);
+			output.to_string()
+		}
 
-	fn get_post_request_output<S: AsRef<str>>(addr: S) -> String {
-		let addr = reqwest::Url::parse(addr.as_ref()).unwrap();
-		let client = reqwest::blocking::ClientBuilder::new().build().unwrap();
-		let output = client.post(addr).send().unwrap().bytes().unwrap();
-		let output = String::from_utf8_lossy(&output);
-		output.to_string()
+		pub fn post<S: AsRef<str>>(addr: S) -> String {
+			let addr = reqwest::Url::parse(addr.as_ref()).unwrap();
+			let client = reqwest::blocking::ClientBuilder::new().build().unwrap();
+			let output = client.post(addr).send().unwrap().bytes().unwrap();
+			let output = String::from_utf8_lossy(&output);
+			output.to_string()
+		}
 	}
 }
