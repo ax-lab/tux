@@ -12,3 +12,7 @@ pub use temp::*;
 
 mod testdata;
 pub use testdata::*;
+
+pub mod text;
+
+pub mod diff;
