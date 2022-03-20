@@ -1,30 +1,63 @@
-/// Single element of a diff between a `source` and `result` list. A complete
-/// diff consists of a sequence of these elements.
+/// Single element of a diff between a `source` and `result` lists. A complete
+/// diff consists of a sequence of these elements (see [`DiffResult`]).
 ///
-/// Each element applies to a number of items from either list. Only the
-/// count of items is kept, so diff elements must be considered in sequence,
-/// with each element moving forward the sequence anchor position for further
-/// elements.
+/// The sequence of [`Diff`] elements describes the differences between both
+/// lists in terms of what happens for each item in them, starting with
+/// the `source` list to reach the given `result`. This representation direct
+/// translates to common textual representations of a diff.
 ///
-/// See also [`DiffResult`].
+/// Each [`Diff`] elements contains a `count` of items it applies to. Elements
+/// must be considered in order when using the diff result:
+///
+/// - [`Diff::Output`]: the next `count` items from both lists are the same,
+/// that is, the sequence from `source` has not been changed in the `result`.
+///
+/// - [`Diff::Delete`]: the next `count` items from `source` have been removed
+/// and don't appear in the `result`.
+///
+/// - [`Diff::Insert`]: the next `count` items from `result` have been added
+/// to the current position in `source`.
+///
+/// Note that for a position that has both deleted and inserted items, the
+/// result will always have the [`Diff::Delete`] before the [`Diff::Insert`].
 #[derive(Debug)]
 pub enum Diff {
-	/// Sequence of items that are common between the `source` and `result`
-	/// lists and output as-is.
-	///
-	/// Moves the anchor forward in both lists.
+	/// Represents a sequence of items in `source` and `result` that are the
+	/// same.
 	Output(usize),
 
-	/// Deleted sequence of items from the `source` list, moving the anchor
-	/// for the list forward.
+	/// Represents a sequence of items from `source` that has been removed
+	/// and does not appear in `result`.
 	Delete(usize),
 
-	/// Inserted sequence of items from the `result` list, moving the anchor
-	/// for the list forward.
+	/// Represents a sequence of items from `result` that have been added
+	/// at the current position in `source`.
 	Insert(usize),
 }
 
 /// Computes the difference between two lists containing lines of text.
+///
+/// # Example
+///
+/// ```
+/// use tux::diff;
+///
+/// let source = vec!["1", "2", "3"];
+/// let result = vec!["0", "2", "4"];
+///
+/// let diff = diff::lines(&source, &result);
+/// println!("{}", diff);
+/// ```
+///
+/// This will output:
+///
+/// ```text
+/// -1
+/// +0
+///  2
+/// -3
+/// +4
+/// ```
 pub fn lines<'a, T>(source: &'a [T], result: &'a [T]) -> DiffResult<'a, T>
 where
 	T: AsRef<str> + std::cmp::PartialEq,
@@ -119,11 +152,22 @@ where
 	}
 }
 
-/// Result of a diff operation.
+/// Result of a diff operation between a `source` list and a `result` list.
 ///
-/// This packages a list of [`Diff`] elements with the `source` and `result`
-/// lists that the diff was computed from, and with it can also generate a
-/// string representation of the diff.
+/// This struct contains a sequence of [`Diff`] elements, and the `source` and
+/// `result` lists that the diff sequence was computed from.
+///
+/// See the [`Diff`] documentation for more details on how the diff is
+/// represented.
+///
+/// # Diff output
+///
+/// The result maintains a reference to both the `source` and `result` lists
+/// that the diff was computed from. This allows it to generate the textual
+/// representation of the diff by implementing [`std::fmt::Display`].
+///
+/// This requires that the `source`/`result` items implement the [`Display`](std::fmt::Display)
+/// trait.
 pub struct DiffResult<'a, T> {
 	items: Vec<Diff>,
 	source: &'a [T],
