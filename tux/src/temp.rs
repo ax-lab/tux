@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use path_clean::PathClean;
 
 /// Generates a temporary directory that can be used by tests. Returns
-/// a [`TempDir`] value wrapping it.
+/// a [`TempDir`] value that provides access to the created directory.
 ///
 /// The directory and its contents will be deleted once the value is
 /// dropped.
