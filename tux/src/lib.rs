@@ -1,6 +1,8 @@
 //! This library provides miscellaneous utility functions for unit and
 //! integration tests in Rust.
 
+pub mod assert_panic;
+
 mod exec;
 pub use exec::*;
 
