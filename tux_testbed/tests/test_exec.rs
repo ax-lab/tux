@@ -11,6 +11,8 @@ mod get_bin {
 }
 
 mod run_bin {
+	use tux::assert_panic;
+
 	use super::run_bin;
 
 	#[test]
@@ -30,13 +32,16 @@ mod run_bin {
 	}
 
 	#[test]
-	#[should_panic = "exit code: 123"]
 	fn panics_on_non_zero_exit_code() {
-		run_bin("bin_with_error", &["exitcode"]);
+		let run = || run_bin("bin_with_error", &["exitcode"]);
+		assert_panic!("exited with error" in run());
+		assert_panic!("123" in run());
 	}
 }
 
 mod get_process_output {
+	use tux::assert_panic;
+
 	use super::get_bin;
 	use super::get_process_output;
 
@@ -48,10 +53,13 @@ mod get_process_output {
 	}
 
 	#[test]
-	#[should_panic = "exit code: 123"]
 	fn panics_on_non_zero_exit_code() {
-		let mut cmd = get_bin("bin_with_error");
-		cmd.args(&["exitcode"]);
-		get_process_output(cmd.output().unwrap());
+		let run = || {
+			let mut cmd = get_bin("bin_with_error");
+			cmd.args(&["exitcode"]);
+			get_process_output(cmd.output().unwrap());
+		};
+		assert_panic!("123" in run());
+		assert_panic!("exited with error" in run());
 	}
 }

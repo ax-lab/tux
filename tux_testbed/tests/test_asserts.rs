@@ -1,5 +1,5 @@
 mod panics {
-	use tux::*;
+	use tux::assert_panic;
 
 	#[test]
 	fn works_outside_the_crate() {
