@@ -1,3 +1,19 @@
+/// Asserts that an expression panics with the specified message.
+///
+/// This is provided as an alternative to the `#[should_panic]` attribute in
+/// tests that allows for multiple tests in a single function.
+///
+/// This macro will also suppress the output from the default panic hook by
+/// replacing it while the expression is run.
+///
+/// ```
+/// # use tux::assert_panic;
+/// fn panicky() {
+///     panic!("some message");
+/// }
+///
+/// assert_panic!("some message" in panicky());
+/// ```
 #[macro_export]
 macro_rules! assert_panic {
 	($message:literal in $code:expr) => {{
