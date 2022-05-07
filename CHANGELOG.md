@@ -1,3 +1,7 @@
+## 0.2.1
+
+Update documentation metadata for https://docs.rs/.
+
 ## 0.2.0
 
 Add Cargo features.
