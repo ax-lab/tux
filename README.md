@@ -33,7 +33,7 @@ having them all enabled, you can use the following in your `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-tux = { version = "0.2.0", default-features = false, features = ["..."] }
+tux = { version = "0.2", default-features = false, features = ["..."] }
 ```
 
 ## Examples
@@ -135,7 +135,7 @@ to test using plain assertions.
 To use this you must enable the `server` feature.
 
 ```toml
-tux = { version = "0.2.0", features = ["server"] }
+tux = { version = "0.2", features = ["server"] }
 ```
 
 Provides a simple HTTP server powered by [warp](https://docs.rs/warp/) to test
