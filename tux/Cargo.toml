@@ -1,6 +1,6 @@
 [package]
 name = "tux"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "Test utilities for unit and integration tests"
 license = "MIT"
@@ -14,11 +14,29 @@ categories = ["development-tools::testing"]
 [lib]
 path = "src/lib.rs"
 
+[features]
+
+# The policy is to enable everything except for costly features that are too
+# specific.
+#
+# Not enabled by default:
+#
+# - server: specific for web requests, and requires tokio and warp.
+
+default = ["diff", "exec", "temp", "testdata", "text"]
+
+diff = ["text"]
+exec = []
+server = ["dep:tokio", "dep:warp"]
+temp = ["dep:path-clean", "dep:tempfile"]
+testdata = ["diff"]
+text = []
+
 [dependencies]
-path-clean = { version = "0.1" }
-tempfile = { version = "3" }
-tokio = { version = "1", features = ["full"] }
-warp = { version = "0.3"}
+path-clean = { version = "0.1", optional = true }
+tempfile = { version = "3", optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+warp = { version = "0.3", optional = true }
 
 [dev-dependencies]
 reqwest = { version = "0.11", features = ["blocking"] }

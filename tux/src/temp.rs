@@ -1,3 +1,7 @@
+//! Support for managing temporary directories and files.
+//!
+//! This module is enabled by the `temp` feature (enabled by default).
+
 use std::path::{Path, PathBuf};
 
 // Rust's standard library option for path normalization (`canonicalize`)
@@ -91,6 +95,7 @@ impl TempDir {
 	///
 	/// To get the entire process output, including the exit code and error
 	/// output, use [`get_bin_output`](Self::get_bin_output) instead.
+	#[cfg(feature = "exec")]
 	pub fn run_bin(&self, cmd: &str, args: &[&str]) -> String {
 		let output = self.get_bin_output(cmd, args);
 		super::get_process_output(output)
@@ -98,6 +103,7 @@ impl TempDir {
 
 	/// Similar to [`run_bin`](Self::run_bin) but returns the entire process
 	/// output. Use this to access the exit code and error output.
+	#[cfg(feature = "exec")]
 	pub fn get_bin_output(&self, cmd: &str, args: &[&str]) -> std::process::Output {
 		let mut cmd = super::get_bin(cmd);
 		cmd.args(args);

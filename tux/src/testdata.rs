@@ -1,3 +1,7 @@
+//! Support for tests based on text files.
+//!
+//! This module is enabled by the `testdata` feature (enabled by default).
+
 use std::{
 	collections::VecDeque,
 	io::ErrorKind,
@@ -253,6 +257,7 @@ fn collect_test_inputs_with_name(root_path: &Path) -> Vec<(PathBuf, String)> {
 }
 
 #[cfg(test)]
+#[cfg(feature = "temp")] // we use `temp` in the tests
 mod test_testdata {
 	use super::{testdata, testdata_to_result};
 	use crate::{temp_dir, TempDir};

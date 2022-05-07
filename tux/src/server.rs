@@ -1,9 +1,16 @@
+//! Provides a web server for tests.
+//!
+//! This module must be enabled by the `server` feature.
+
 use warp::{path::FullPath, Filter};
 
+pub use tokio;
 pub use warp;
 
 /// Provides a very simple HTTP server with [`warp`] that can be used to test
 /// requests.
+///
+/// To use this you must enable the `server` feature in your `Cargo.toml`.
 ///
 /// The server is bound to the `localhost` at a random port. The bound port
 /// can be retrieved using the [`TestServer::port`] method.

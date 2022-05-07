@@ -1,3 +1,7 @@
+//! Provides support for running executables from the crate.
+//!
+//! This module is enabled by the `exec` feature (enabled by default).
+
 use std::process::Command;
 
 /// Returns a [`Command`] for running a binary from the project (i.e. a binary

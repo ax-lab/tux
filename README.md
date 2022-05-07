@@ -5,12 +5,36 @@
 
 Miscellaneous test utilities for unit and integration tests in Rust.
 
+```toml
+[dev-dependencies]
+tux = { version = "0.2" }
+```
+
 The goal of this project is to support a variety of test scenarios that may
 be tricky to test, such as HTTP requests, executing binaries, testing complex
 output, etc.
 
 There is no particular scope with the code utilities provided, other than being
 generally useful in a unit or integration test scenario.
+
+## Cargo Features
+
+This crate provides features for most of its functionality. By default, all
+features are enabled, except overly-specific ones that are heavy to build.
+
+Currently, that applies only to the [`server`](#http-requests) feature, which
+is the only one not enabled by default.
+
+See the crate [docs](https://docs.rs/tux) for a description of all available
+crate features.
+
+If you want to use a few specific features and prefer to opt-in instead of
+having them all enabled, you can use the following in your `Cargo.toml`:
+
+```toml
+[dev-dependencies]
+tux = { version = "0.2.0", default-features = false, features = ["..."] }
+```
 
 ## Examples
 
@@ -107,6 +131,12 @@ to test using plain assertions.
 
 
 ### HTTP requests
+
+To use this you must enable the `server` feature.
+
+```toml
+tux = { version = "0.2.0", features = ["server"] }
+```
 
 Provides a simple HTTP server powered by [warp](https://docs.rs/warp/) to test
 scenarios such as a web client library.
