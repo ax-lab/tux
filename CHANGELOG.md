@@ -1,3 +1,15 @@
+## 0.2.2
+
+Improve `assert_panic!` to support mutable expressions. It now supports:
+
+```rust
+let mut list = Vec::new();
+assert_panic!("bounds" in {
+    list.push(123);
+    let _ = list[1];
+});
+```
+
 ## 0.2.1
 
 Update documentation metadata for https://docs.rs/.
