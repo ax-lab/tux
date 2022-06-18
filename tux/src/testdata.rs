@@ -59,173 +59,215 @@ const TEST_NEW_VALID_FILE_EXTENSION: &'static str = "valid.new";
 /// the `.input` file, running the tests, and then removing the `.new` from
 /// the created file after manually inspecting it to make sure it is the
 /// expected behavior.
-pub fn testdata<P, F>(path: P, callback: F)
+pub fn testdata<P, F>(path: P, mut callback: F)
 where
 	P: AsRef<Path>,
 	F: FnMut(Vec<String>) -> Vec<String>,
 {
-	let result = testdata_to_result(path, callback);
+	let tests = TestData::new(path.as_ref().to_str().unwrap(), |input| {
+		let output = callback(super::text::lines(input.text()));
+		output.join("\n")
+	});
+	let result = tests.run();
+	result.check();
+}
 
-	for it in result.tests.iter() {
-		if it.success {
-			println!("passed: {}", it.name);
-		} else {
-			println!("failed: {}", it.name);
-		}
+pub struct TestData<T>
+where
+	T: FnMut(&TestInput) -> String,
+{
+	callback: T,
+	tests: Vec<TestInput>,
+}
+
+impl<T: FnMut(&TestInput) -> String> TestData<T> {
+	pub fn new<P: AsRef<str>>(source: P, callback: T) -> Self {
+		let tests = collect_test_inputs(source);
+		TestData { callback, tests }
 	}
 
-	if !result.success() {
+	pub fn run(self) -> TestRun {
+		let mut output = TestRun {
+			results: Vec::new(),
+		};
+		let mut callback = self.callback;
+		for input in self.tests {
+			let output_text = callback(&input);
+			let output_lines = super::text::lines(&output_text);
+
+			let mut test_succeeded = true;
+
+			let mut valid_file_path = input.path.clone();
+			valid_file_path.set_extension(TEST_VALID_FILE_EXTENSION);
+
+			let expected_lines = match std::fs::read_to_string(&valid_file_path) {
+				Ok(raw_text) => {
+					let expected_lines = super::text::lines(raw_text);
+					let expected_text = expected_lines.join("\n");
+					let actual_text = output_lines.join("\n");
+					if actual_text != expected_text {
+						test_succeeded = false;
+					}
+					Some(expected_lines)
+				}
+				Err(err) => {
+					test_succeeded = false;
+					if err.kind() == ErrorKind::NotFound {
+						// for convenience, if the test output is not found we
+						// generate a new one with the current test output
+						let mut new_valid_file_path = valid_file_path.clone();
+						new_valid_file_path.set_extension(TEST_NEW_VALID_FILE_EXTENSION);
+						std::fs::write(new_valid_file_path, output_text)
+							.expect("writing new test output");
+					} else {
+						// this is not an expected failure mode, so we just panic
+						panic!("failed to read output file for {}: {}", &input.name, err);
+					}
+
+					// there is no expected lines in this case, since the valid
+					// file was not found
+					None
+				}
+			};
+
+			let valid_file_name = valid_file_path.file_name().unwrap().to_string_lossy();
+			output.results.push(TestResult {
+				success: test_succeeded,
+				name: input.name,
+				valid_file: valid_file_name.into(),
+				expect: expected_lines,
+				actual: output_lines,
+			});
+		}
+		output
+	}
+}
+
+pub struct TestInput {
+	name: String,
+	path: PathBuf,
+	text: String,
+}
+
+impl TestInput {
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+
+	pub fn text(&self) -> String {
+		self.text.clone()
+	}
+}
+
+pub struct TestRun {
+	results: Vec<TestResult>,
+}
+
+impl TestRun {
+	pub fn check(&self) {
 		let mut failed_count = 0;
 
-		for it in result.tests.iter() {
-			if !it.success {
+		for it in &self.results {
+			if it.success {
+				println!("passed: {}", it.name);
+			} else {
+				println!("failed: {}", it.name);
 				failed_count += 1;
+			}
+		}
 
-				if let Some(expected) = &it.expect {
-					eprintln!(
-						"\n=> `{}` output did not match `{}`:",
-						it.name, it.valid_file
-					);
+		if failed_count > 0 {
+			for it in &self.results {
+				if !it.success {
+					if let Some(expected) = &it.expect {
+						eprintln!(
+							"\n=> `{}` output did not match `{}`:",
+							it.name, it.valid_file
+						);
 
-					let diff = super::diff::lines(&it.actual, expected);
-					eprintln!("\n{}", diff);
-				} else {
-					eprintln!("\n=> `{}` for test `{}` not found", it.valid_file, it.name);
-					eprintln!(
-						".. created `{}.new` with the current test output",
-						it.valid_file
-					);
+						let diff = super::diff::lines(&it.actual, expected);
+						eprintln!("\n{}", diff);
+					} else {
+						eprintln!("\n=> `{}` for test `{}` not found", it.valid_file, it.name);
+						eprintln!(
+							".. created `{}.new` with the current test output",
+							it.valid_file
+						);
+					}
 				}
 			}
-		}
 
-		eprintln!("\n===== Failed tests =====\n");
-		for it in result.tests.iter() {
-			if !it.success {
-				eprintln!("- {}", it.name);
+			eprintln!("\n===== Failed tests =====\n");
+			for it in &self.results {
+				if !it.success {
+					eprintln!("- {}", it.name);
+				}
 			}
-		}
-		eprintln!();
+			eprintln!();
 
-		panic!(
-			"{} test case{} failed",
-			failed_count,
-			if failed_count != 1 { "s" } else { "" }
-		);
+			panic!(
+				"{} test case{} failed",
+				failed_count,
+				if failed_count != 1 { "s" } else { "" }
+			);
+		}
+	}
+
+	pub fn success(&self) -> bool {
+		self.results.iter().all(|x| x.success)
+	}
+
+	pub fn all(&self) -> Vec<&TestResult> {
+		self.results.iter().collect()
+	}
+
+	pub fn failed(&self) -> Vec<&TestResult> {
+		self.results.iter().filter(|x| !x.success).collect()
 	}
 }
 
-/// Groups the result of a [`testdata_to_result`] run.
-#[derive(Debug)]
-struct TestDataResult {
-	pub tests: Vec<TestDataResultItem>,
-}
+#[derive(Debug, Clone)]
+pub struct TestResult {
+	success: bool,
 
-/// Contains information about a single test case, that is, the result of
-/// running the test callback for a single `.input` file.
-#[derive(Debug)]
-struct TestDataResultItem {
-	/// Returns if this test case was successful.
-	pub success: bool,
-
-	/// The test case name. This is the input file name, without path.
-	pub name: String,
+	/// The test case name. This is the input file name, without the base path.
+	name: String,
 
 	/// Name for the valid file containing the expected test output.
-	pub valid_file: String,
+	valid_file: String,
 
 	/// Expected test output from the valid file. This will be `None` if the
 	/// test failed because the valid file was not found.
-	pub expect: Option<Vec<String>>,
+	expect: Option<Vec<String>>,
 
 	/// Actual output form the test callback.
-	pub actual: Vec<String>,
+	actual: Vec<String>,
 }
 
-impl TestDataResult {
-	/// Returns `true` if and only if all tests succeeded.
-	pub fn success(&self) -> bool {
-		for it in self.tests.iter() {
-			if !it.success {
-				return false;
-			}
-		}
-		true
+impl TestResult {
+	pub fn name(&self) -> &str {
+		&self.name
 	}
 }
 
-fn testdata_to_result<P, F>(test_path: P, mut test_callback: F) -> TestDataResult
-where
-	P: AsRef<Path>,
-	F: FnMut(Vec<String>) -> Vec<String>,
-{
-	let test_path = test_path.as_ref();
+fn collect_test_inputs<P: AsRef<str>>(source: P) -> Vec<TestInput> {
+	let root_path = PathBuf::from(source.as_ref());
+	let mut test_inputs = Vec::new();
 
-	let mut test_results = Vec::new();
-	let test_inputs_with_name = collect_test_inputs_with_name(test_path);
-
-	for (input_path, test_name) in test_inputs_with_name.into_iter() {
-		let input_text = std::fs::read_to_string(&input_path).expect("reading test input file");
-		let input_lines = super::text::lines(input_text);
-
-		let mut test_succeeded = true;
-		let output_lines = test_callback(input_lines);
-		let output_text = output_lines.join("\n");
-
-		let mut valid_file_path = input_path.clone();
-		valid_file_path.set_extension(TEST_VALID_FILE_EXTENSION);
-
-		let expected_lines = match std::fs::read_to_string(&valid_file_path) {
-			Ok(raw_text) => {
-				let expected_lines = super::text::lines(raw_text);
-				let expected_text = expected_lines.join("\n");
-				if output_text != expected_text {
-					test_succeeded = false;
-				}
-				Some(expected_lines)
-			}
-			Err(err) => {
-				test_succeeded = false;
-				if err.kind() == ErrorKind::NotFound {
-					// for convenience, if the test output is not found we
-					// generate a new one with the current test output
-					let mut new_valid_file_path = valid_file_path.clone();
-					new_valid_file_path.set_extension(TEST_NEW_VALID_FILE_EXTENSION);
-					std::fs::write(new_valid_file_path, output_text)
-						.expect("writing new test output");
-				} else {
-					// this is not an expected failure mode, so we just panic
-					panic!("failed to read output file for {}: {}", test_name, err);
-				}
-
-				// there is no expected lines in this case, since the valid
-				// file was not found
-				None
-			}
-		};
-
-		let valid_file_name = valid_file_path.file_name().unwrap().to_string_lossy();
-		test_results.push(TestDataResultItem {
-			success: test_succeeded,
-			name: test_name,
-			valid_file: valid_file_name.into(),
-			expect: expected_lines,
-			actual: output_lines,
-		});
+	struct Directory {
+		name: String,
+		path: PathBuf,
 	}
 
-	TestDataResult {
-		tests: test_results,
-	}
-}
+	let mut directories_to_scan = VecDeque::new();
+	directories_to_scan.push_back(Directory {
+		path: root_path,
+		name: String::new(),
+	});
 
-fn collect_test_inputs_with_name(root_path: &Path) -> Vec<(PathBuf, String)> {
-	let mut test_inputs_with_name = Vec::new();
-
-	let mut dirs_to_scan_with_name = VecDeque::new();
-	dirs_to_scan_with_name.push_back((root_path.to_owned(), String::new()));
-
-	while let Some((current_dir, current_name)) = dirs_to_scan_with_name.pop_front() {
+	while let Some(next_directory) = directories_to_scan.pop_front() {
+		let current_dir = next_directory.path;
+		let current_name = next_directory.name;
 		let entries = std::fs::read_dir(&current_dir).expect("reading test directory");
 		let entries = entries.map(|x| x.expect("reading test directory entry"));
 
@@ -244,23 +286,43 @@ fn collect_test_inputs_with_name(root_path: &Path) -> Vec<(PathBuf, String)> {
 			let entry_info =
 				std::fs::metadata(&entry_path).expect("reading test directory metadata");
 			if entry_info.is_dir() {
-				dirs_to_scan_with_name.push_back((entry_path, entry_name));
+				directories_to_scan.push_back(Directory {
+					name: entry_name,
+					path: entry_path,
+				});
 			} else if let Some(extension) = entry_path.extension() {
 				if extension == TEST_INPUT_FILE_EXTENSION {
-					test_inputs_with_name.push((entry_path, entry_name));
+					test_inputs.push(TestInput {
+						name: entry_name,
+						text: std::fs::read_to_string(&entry_path).expect("reading test input"),
+						path: entry_path,
+					});
 				}
 			}
 		}
 	}
 
-	test_inputs_with_name
+	test_inputs
+}
+
+pub fn testdata_to_result<P, F>(path: P, mut callback: F) -> TestRun
+where
+	P: AsRef<Path>,
+	F: FnMut(Vec<String>) -> Vec<String>,
+{
+	let tests = TestData::new(path.as_ref().to_str().unwrap(), |input| {
+		let output = callback(super::text::lines(input.text()));
+		output.join("\n")
+	});
+	let result = tests.run();
+	result
 }
 
 #[cfg(test)]
 #[cfg(feature = "temp")] // we use `temp` in the tests
 mod test_testdata {
-	use super::{testdata, testdata_to_result};
-	use crate::{temp_dir, TempDir};
+	use super::testdata;
+	use crate::{temp_dir, testdata_to_result, TempDir};
 
 	#[test]
 	fn runs_test_callback() {
@@ -443,9 +505,9 @@ mod test_testdata {
 		});
 
 		assert!(result.success());
-		assert_eq!(result.tests.len(), 1);
-		assert_eq!(result.tests[0].name, "test.input");
-		assert_eq!(result.tests[0].success, true);
+		assert_eq!(result.all().len(), 1);
+		assert_eq!(result.all()[0].name, "test.input");
+		assert_eq!(result.all()[0].success, true);
 	}
 
 	#[test]
@@ -459,10 +521,10 @@ mod test_testdata {
 			input.into_iter().map(|x| x.to_lowercase()).collect()
 		});
 
-		assert_eq!(result.tests.len(), 3);
-		assert_eq!(result.tests[0].name, "a.input");
-		assert_eq!(result.tests[1].name, "b.input");
-		assert_eq!(result.tests[2].name, "sub/some.input");
+		assert_eq!(result.all().len(), 3);
+		assert_eq!(result.all()[0].name, "a.input");
+		assert_eq!(result.all()[1].name, "b.input");
+		assert_eq!(result.all()[2].name, "sub/some.input");
 	}
 
 	#[test]
@@ -482,10 +544,10 @@ mod test_testdata {
 		});
 
 		assert!(!result.success());
-		assert!(result.tests.len() == 3);
-		assert!(result.tests[0].success);
-		assert!(result.tests[1].success);
-		assert!(!result.tests[2].success);
+		assert!(result.all().len() == 3);
+		assert!(result.all()[0].success);
+		assert!(result.all()[1].success);
+		assert!(!result.all()[2].success);
 	}
 
 	//------------------------------------------------------------------------//
